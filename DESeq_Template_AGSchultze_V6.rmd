@@ -1,5 +1,5 @@
 ---
-title: "DESeq2 Analysis Template"
+title: "DESeq2 RNA-seq Analysis Template"
 author: "Stefanie Herresthal, Nico Reusch, Jonas Schulte-Schrepping"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: 
@@ -66,7 +66,7 @@ output:
 * Project directory on blades: 
 
 ## Workflow Summary
-Space for notes concerning the global workflow and quality checks. 
+*Space for notes concerning the global workflow and quality checks.*
 
 # Folder requirements 
 
@@ -82,7 +82,7 @@ dir.create(file.path(dir, "Analysis", "Plots"), recursive = T)
 ```
 
 ## Content of directory
-The project directory needs to contain a filder *Data* containing: 
+The project directory needs to contain a folder *Data* containing: 
 
 * The output-folder of the bulk RNAseq-pipeline including the folders *kallisto* and *qc* 
 * If added by hand, the kallisto files should be in: *Data/output/kallisto/kallisto/*
