@@ -84,7 +84,7 @@ dir.create(file.path(dir, "Analysis", "Plots"), recursive = T)
 ## Content of directory
 The project directory needs to contain a folder *Data* containing: 
 
-* The output-folder of the bulk RNAseq-pipeline including the folders *kallisto* and *qc* 
+* The output folder of the bulk RNAseq-pipeline including the folders *kallisto* and *qc* 
 * If added by hand, the kallisto files should be in: *Data/output/kallisto/kallisto/*
 * If added by hand, the qc files should be in: *Data/output/kallisto/mutiqc/multiqc_data/multiqc_kallisto.txt* and *Data/output/qc/multiqc/multiqc_data/multiqc_fastqc.txt*. 
 
@@ -108,9 +108,15 @@ All packages to load and install
 
 ```{r load packages, echo=FALSE, results='hide',message=FALSE,warning=FALSE}
 options(java.parameters = "-Xmx8000m")
-list.of.packages <- c("hwriter","RColorBrewer","tidyverse", "reshape2","dplyr","stringr","pheatmap","colourlovers",'VennDiagram',
-                      "ggbeeswarm","scales","magrittr", "tidyr","bit", "data.table","RSQLite","Rcpp", "rJava", "devtools", "matrixStats", "xlsx", "gridBase", "survival", "rlang", "MASS", "ggforce",
-                      "tibble","stringi","gtools","ggrepel","Hmisc", "gplots")
+list.of.packages <- c("hwriter","RColorBrewer","tidyverse",
+                      "reshape2","dplyr","stringr","pheatmap",
+                      "colourlovers",'VennDiagram', "ggbeeswarm",
+                      "scales","magrittr", "tidyr","bit", 
+                      "data.table","RSQLite","Rcpp", "rJava", 
+                      "devtools", "matrixStats", "xlsx", "gridBase", 
+                      "survival", "rlang", "MASS", "ggforce",
+                      "tibble","stringi","gtools","ggrepel",
+                      "Hmisc", "gplots","factoextra")
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
 if(length(new.packages)>0) install.packages(new.packages)
 list.of.bioc.packages<- c("rhdf5","DESeq2","IHW","clusterProfiler","GSEABase","AnnotationDbi",
@@ -122,12 +128,11 @@ source("https://bioconductor.org/biocLite.R")
 if(length(new.packages.bioc)>0) biocLite(new.packages.bioc,suppressUpdates=TRUE)
 lapply(c(list.of.packages,list.of.bioc.packages), require, character.only = TRUE)
 ```
+
 ## Define global functions
 Definition of all global functions used in this script
 
 ```{r global functions, hide = T, cache = T}
-
-source("complexheatmap.R")
 
 varStab<- function(blind_param=T){
   if(length(samples_to_keep)<30){
@@ -137,6 +142,7 @@ varStab<- function(blind_param=T){
     vst <- vst(dds, blind = blind_param)
   }
 }
+
 multiplot<-function(..., plotlist=NULL, file, cols=1, layout=NULL) {
   library(grid)
   
@@ -172,66 +178,82 @@ multiplot<-function(..., plotlist=NULL, file, cols=1, layout=NULL) {
     }
   }
 }
+
 setClass(Class = "DESeq2_analysis_object",
          slots = c(parameters="list", results="data.frame", DE_genes="list", Number_DE_genes="list"))
+
 DEAnalysis <- function(alpha_option=0.05, 
                          lfc_Threshold=0,
                          condition=condition,
                          multiple_testing="IHW"){
   DE_objects <- list()
   
-    
     #creat DE_object
     DE_object <- new(Class = "DESeq2_analysis_object")
+    
     # Define parameters
-    
-    
-    
     for (i in 1:nrow(comparison_table)){
       list_DE_genes <- list()
       if (multiple_testing=="IHW") {
-        res_deseq_lfc <- results(dds,contrast = c(condition, paste(comparison_table$comparison[i]),paste(comparison_table$control[i])),
+        res_deseq_lfc <- results(dds,
+                                 contrast = c(condition,
+                                              paste(comparison_table$comparison[i]),
+                                              paste(comparison_table$control[i])),
                                  lfcThreshold = lfc_Threshold,
                                  alpha = alpha_option,
                                  filterFun = ihw,
                                  altHypothesis = "greaterAbs")
-        res_deseq_lfc <- lfcShrink(dds, contrast = c(condition,paste(comparison_table$comparison[i]), paste(comparison_table$control[i])),
+        res_deseq_lfc <- lfcShrink(dds, 
+                                   contrast = c(condition,
+                                                paste(comparison_table$comparison[i]),
+                                                paste(comparison_table$control[i])),
                                    res=res_deseq_lfc)
+        
         res_deseq_lfc <- as.data.frame(res_deseq_lfc)
         res_deseq_lfc$FC <- logratio2foldchange(res_deseq_lfc$log2FoldChange,base=2)
         res_deseq_lfc$significance<-ifelse(res_deseq_lfc$padj <=alpha_option&!is.na(res_deseq_lfc$padj)&(res_deseq_lfc$log2FoldChange>lfc_Threshold|res_deseq_lfc$log2FoldChange<(-lfc_Threshold)), "T", "F")
         res_deseq_lfc$regulation <-ifelse(res_deseq_lfc$log2FoldChange>lfc_Threshold,"up","down")
       }
       else {
-        res_deseq_lfc <- results(dds,contrast = c(condition, paste(comparison_table$comparison[i]),paste(comparison_table$control[i])),
+        res_deseq_lfc <- results(dds,
+                                 contrast = c(condition,
+                                          paste(comparison_table$comparison[i]),
+                                          paste(comparison_table$control[i])),
                                  lfcThreshold = lfc_Threshold,
                                  alpha = alpha_option,
                                  independentFiltering = T,
                                  altHypothesis = "greaterAbs",
                                  pAdjustMethod=multiple_testing)
-        res_deseq_lfc <- lfcShrink(dds, contrast = c(condition,paste(comparison_table$comparison[i]), paste(comparison_table$control[i])),
+        res_deseq_lfc <- lfcShrink(dds, 
+                                   contrast = c(condition,
+                                                paste(comparison_table$comparison[i]), 
+                                                paste(comparison_table$control[i])),
                                    res=res_deseq_lfc)
         res_deseq_lfc <- as.data.frame(res_deseq_lfc)
-        
         res_deseq_lfc$FC <- logratio2foldchange(res_deseq_lfc$log2FoldChange,base=2)
         res_deseq_lfc$significance<-ifelse(res_deseq_lfc$padj <=alpha_option&!is.na(res_deseq_lfc$padj)&(res_deseq_lfc$log2FoldChange>lfc_Threshold|res_deseq_lfc$log2FoldChange<(-lfc_Threshold)), "T", "F")
       } 
-      parameters <-list(multiple_testing, alpha_option, lfc_Threshold, paste(comparison_table$comparison[i]), paste(comparison_table$control[i]))
+      parameters <-list(multiple_testing, 
+                        alpha_option, 
+                        lfc_Threshold, 
+                        paste(comparison_table$comparison[i]), 
+                        paste(comparison_table$control[i]))
       names(parameters)<-c("multiple_testing","p_value_threshold","lfc_threshold","comparison","control")
       DE_object@parameters <- parameters
       res_deseq_lfc$ENS_ID <- row.names(res_deseq_lfc) # ensembl-IDs as row names
-res_deseq_lfc <- merge(res_deseq_lfc, gene_annotation[!duplicated(gene_annotation$GENEID),c("GENEID", "SYMBOL", "GENETYPE")], by.y = "GENEID", by.x = "ENS_ID", all.x = F) 
-rownames(res_deseq_lfc) <- res_deseq_lfc$ENS_ID
+
+      res_deseq_lfc <- merge(res_deseq_lfc, gene_annotation[!duplicated(gene_annotation$GENEID),c("GENEID", "SYMBOL", "GENETYPE")], by.y = "GENEID", by.x = "ENS_ID", all.x = F) 
+
+rownames(res_deseq_lfc) <- res_deseq_lfc$ENS_ID # could this line be deleted? Rownames are already ENS_ID
 res_deseq_lfc$ENS_ID<-NULL
 res_deseq_lfc$comparison<-paste(comparison_table$comparison[i],"VS",comparison_table$control[i],sep="_")
-res_deseq_lfc<-res_deseq_lfc[c(13,11,12,1,2,3,4,5,6,7,8,9,10)]
+res_deseq_lfc<-res_deseq_lfc[c(13,11,12,1,2,3,4,5,6,7,8,9,10)] # is this a good idea? Could this solved more specifically without numbers?
       DE_object@results <- res_deseq_lfc
       list_DE_genes <- list(rownames(res_deseq_lfc[!is.na(res_deseq_lfc$padj)&
-                                                                                                res_deseq_lfc$padj<alpha_option&
-                                                                                                res_deseq_lfc$log2FoldChange>lfc_Threshold,]),
+                                     res_deseq_lfc$padj<alpha_option&                                                                                            res_deseq_lfc$log2FoldChange>lfc_Threshold,]),
                             rownames(res_deseq_lfc[!is.na(res_deseq_lfc$padj)&
-                                                                                                res_deseq_lfc$padj<alpha_option&
-                                                                                                res_deseq_lfc$log2FoldChange<(-lfc_Threshold),]))
+                                     res_deseq_lfc$padj<alpha_option&
+                                     res_deseq_lfc$log2FoldChange<(-lfc_Threshold),]))
       names(list_DE_genes) = c(paste("up-regulated genes"), 
                                paste("down-regulated genes"))
       DE_object@DE_genes <- list_DE_genes
@@ -243,6 +265,7 @@ res_deseq_lfc<-res_deseq_lfc[c(13,11,12,1,2,3,4,5,6,7,8,9,10)]
     DE_objects[[paste(comparison_table$comparison[i], "VS", comparison_table$control[i], sep="_")]] <- assign(  paste(comparison_table$comparison[i]), DE_object)}
   return(DE_objects)
 }
+
 removeBatchEffect_function <- function(x=rld_df,
                                        batch = sample_table[c("Mouse_ID")],
                                        batch_2=NULL,
@@ -266,6 +289,7 @@ removeBatchEffect_function <- function(x=rld_df,
     
   }
 }
+
 Limma_batch <- function(model=model.matrix(~sample_table$condition),
                         batch=sample_table$Sex,
                         batch_2=NULL,
@@ -277,7 +301,10 @@ Limma_batch <- function(model=model.matrix(~sample_table$condition),
                         colour_gradient=bluered(100),
                         point_size=3,
                         title="PcA of batch_corrected counts"){
-  removedbatch_rld <- removeBatchEffect_function(x=as.data.frame(assay(dds_vst)),batch =batch,batch_2=batch_2,model =model.matrix(~sample_table$condition))
+  removedbatch_rld <- removeBatchEffect_function(x=as.data.frame(assay(dds_vst)),
+                                                 batch =batch,
+                                                 batch_2=batch_2,
+                                                 model =model.matrix(~sample_table$condition))
   dds_vst_f_df<-as.matrix(assay(dds_vst))
   if(ntop=="all"){
     pca <- prcomp(t(removedbatch_rld)) 
@@ -642,6 +669,8 @@ if(max(data) > abs(min(data))){
 }
   return(list(breaks = myBreaks, color = myColor))
 }
+
+
 # This function plots the batch-corrected counts
 plot_single_gene <-function(input=norm_anno, gene_symbol="Crybg3", 
                             condition="Genotype_Age", anno_colour=Genotype_Age_col,
@@ -971,126 +1000,9 @@ QCHeatmap <- function(){
 }
 ```
 
-
-
 ```{r QC Heatmap, cache= T, fig.height= 15}
-
 QCHeatmap()
 ```
-
-
-
-```{r}
-mat <- sample_table
-  rownames(mat) <- paste(mat$ID, mat$sample_name, sep = "_")
-  mat$sample_name <- as.character.factor(mat$sample_name)
-  mat$Sex <- as.character.factor(mat$Sex)
-  
-Heatmap(mat[,names(mat) %in% c("basic_statistics", "per_base_sequence_quality", "per_tile_sequence_quality", "per_sequence_quality_scores", "per_base_sequence_content", "per_sequence_gc_content", "per_base_n_content", "sequence_length_distribution", "sequence_duplication_levels", "overrepresented_sequences", "adapter_content")], 
-                 column_title = "FastQ QC",
-                 column_title_gp = gpar(fontsize = 10),
-                 column_names_gp = gpar(fontsize = 8), 
-                 row_names_gp = gpar(fontsize = 8),
-                 show_row_names = T, 
-                 row_names_side = "left",
-                 col = c("#F88524","#A1CD64", "#FBE32D"), 
-                 cell_fun = function(j, i, x, y, width, height, fill){
-                   grid.rect(x = x, y = y, width = width, height = height, 
-                             gp = gpar(col = "grey"))}, 
-                 name = "QC status") + 
-    
-    Heatmap(mat[,"X.GC"], 
-            column_title = "GC content (%)",
-            show_column_names = FALSE, 
-            column_title_gp = gpar(fontsize = 10),
-            column_title_rot = 90,
-            column_names_gp = gpar(fontsize = 8), 
-            show_heatmap_legend = FALSE,
-            cell_fun = function(j, i, x, y, width, height, fill){
-              grid.rect(x = x, y = y, width =2, height = height, 
-                        gp = gpar(col = "grey", fill = "white"))
-              grid.text(sprintf("%.1f", mat[,"X.GC"][i]), x, y, 
-                        gp = gpar(fontsize = 5))
-            })+
-    
-    Heatmap(mat[,"total_deduplicated_percentage"], 
-            column_title = "Percentage of reads remaining if deduplicated",
-            show_column_names = FALSE, 
-            column_title_gp = gpar(fontsize = 10),
-            column_title_rot = 90,
-            column_names_gp = gpar(fontsize = 8), 
-            show_heatmap_legend = FALSE,
-            cell_fun = function(j, i, x, y, width, height, fill){
-              grid.rect(x = x, y = y, width =2, height = height, 
-                        gp = gpar(col = "grey", fill = "white"))
-              grid.text(sprintf("%.1f",
-                                mat[,"total_deduplicated_percentage"][i]), x, y, 
-                        gp = gpar(fontsize = 5))
-            })+
-    
-    Heatmap(mat[,"Sequence.length"], 
-            column_title = "Sequence length",
-            show_column_names = FALSE, 
-            column_title_gp = gpar(fontsize = 10),
-            column_title_rot = 90,
-            column_names_gp = gpar(fontsize = 8), 
-            show_heatmap_legend = FALSE,
-            cell_fun = function(j, i, x, y, width, height, fill){
-              grid.rect(x = x, y = y, width =2, height = height, 
-                        gp = gpar(col = "grey", fill = "white"))
-              grid.text(mat[,"Sequence.length"][i], x, y, 
-                        gp = gpar(fontsize = 5))
-            }) + 
-    
-    
-    Heatmap(mat[,"total_reads"],
-            column_title = "total reads (x 10^6)",
-            show_column_names = FALSE, 
-            column_title_gp = gpar(fontsize = 10),
-            column_title_rot = 90,
-            show_heatmap_legend = FALSE,
-            cluster_columns = F, 
-            cluster_rows = F,
-            row_names_side = "left", 
-            show_row_names = TRUE,
-            row_names_gp = gpar(fontsize = 10),
-            cell_fun = function(j, i, x, y, width, height, fill){
-              grid.text(sprintf("%.1f", mat[,"total_reads"][i]/10^6), 
-                        x, y, 
-                        gp = gpar(fontsize = 5))}) + 
-    
-    Heatmap(mat[,"percent_aligned"],
-            column_title = "aligned reads (%)",
-            show_column_names = FALSE, 
-            column_title_gp = gpar(fontsize = 10),
-            column_title_rot = 90,
-            show_row_names = FALSE, 
-            show_heatmap_legend = FALSE,
-            cluster_columns = F, 
-            cluster_rows = F,
-            cell_fun = function(j, i, x, y, width, height, fill){
-              grid.text(sprintf("%.1f", mat[,"percent_aligned"][i]), x, y, 
-                        gp = gpar(fontsize = 5))}) + 
-    
-    
-    Heatmap(mat[,"pseudoaligned_reads"],
-            column_title = "aligned reads (x 10^6)",
-            show_column_names = FALSE, 
-            column_title_gp = gpar(fontsize = 10),
-            column_title_rot = 90,
-            show_row_names = FALSE, 
-            show_heatmap_legend = FALSE,
-            cluster_columns = F, 
-            cluster_rows = F,
-            cell_fun = function(j, i, x, y, width, height, fill){
-              grid.text(sprintf("%.1f",
-                                mat[,"pseudoaligned_reads"][i]/10^6), 
-                        x, y, 
-                        gp = gpar(fontsize = 5))}) + 
-    
-    rowAnnotation(dist2 = anno_barplot(mat$pseudoaligned_reads, bar_width = 1, gp = gpar(col = NA, fill = "#FFE200"), border = FALSE, which = "row", axis = TRUE), width = unit(1, "cm"))
-```
-
 
 
 ## Exclude samples after QC (based e.g. on number of unique alignments, percent of aligned reads?)
@@ -1114,14 +1026,13 @@ sample_table$Genotype_Age <- factor(sample_table$Genotype_Age,
                                    levels = c("wt_4mo", "wt_8mo", "wt_12mo", "tg_4mo", "tg_8mo", "tg_12mo"))
 sample_table$age <- factor(sample_table$age, levels = c("4mo", "8mo", "12mo"))
 
-# order according to Geotype_Age
+# order according to Genotype_Age
 sample_table <- sample_table[order(sample_table$Genotype_Age),]
 
 ```
 
 
-We use Tximport and DESeq2 using the gene-level estimated counts from Kallisto, and additionally using the transcript-level abundance estimates to calculate a gene-level offset that corrects for changes to the average transcript length across samples. For more details, please see https://bioconductor.org/packages/devel/bioc/vignettes/tximport/inst/doc/tximport.html and 
-http://master.bioconductor.org/packages/release/workflows/vignettes/rnaseqGene/inst/doc/rnaseqGene.html#the-deseqdataset-object-sample-information-and-the-design-formula 
+We use Tximport and DESeq2 based on the gene-level estimated counts from Kallisto. Additionally, we use the transcript-level abundance estimates to calculate a gene-level offset that corrects for changes to the average transcript length across samples. For more details, please see https://bioconductor.org/packages/devel/bioc/vignettes/tximport/inst/doc/tximport.html and http://master.bioconductor.org/packages/release/workflows/vignettes/rnaseqGene/inst/doc/rnaseqGene.html#the-deseqdataset-object-sample-information-and-the-design-formula 
 
 TXimport:
 Imports transcript-level abundance, estimated counts and transcript lengths, and summarizes into 
@@ -1139,6 +1050,7 @@ names(files) <- sample_table$ID
 # Import samples and perform the distribution of transcripts to genes
 txi_kallisto <- tximport(files, type="kallisto", tx2gene=gene_annotation[,2:1])
 ```
+
 ## DESeq-Dataset and DESeq-function
 ```{r DESeqDatasetFromTXimport}
 dds_txi <- DESeqDataSetFromTximport(txi = txi_kallisto, 
@@ -1147,24 +1059,23 @@ dds_txi <- DESeqDataSetFromTximport(txi = txi_kallisto,
 ```
 
 ## Pre-filtering
-Filtering of genes that have less than 10 counts summed over all samples
+Filtering of very low expressed genes that have less than 10 counts summed over all samples
 ```{r pre-filtering}
 genes_to_keep <- rowSums(counts(dds_txi)) >= 10
 dds <- dds_txi[genes_to_keep,]
 ```
 
-Number of genes considered to be present in the data set
+Number of genes reliably detected in the data set
 ```{r}
 sum(genes_to_keep) 
 ```
-
 
 ## Perform DESeq calculations
 ```{r DESeq calculation}
 dds <- DESeq(dds)
 ```
 
-## Save normalized count table
+## Normalized count table
 ```{r norm}
 norm <- as.data.frame(counts(dds, normalized=T))
 colnames(norm) <- colnames(dds)
@@ -1178,6 +1089,14 @@ norm_anno <- merge(norm_anno, gene_annotation[!duplicated(gene_annotation$GENEID
 rownames(norm_anno) <- norm_anno$ENS_ID
 ```
 
+## Add additional information from biomart
+```{r}
+biomart <- read.delim(file.path(dir, "Data", "biomart_180914.txt"), stringsAsFactors = FALSE)
+idx <- match(unlist(lapply(strsplit(norm_anno$ENS_ID, split = "[.]"), `[[`, 1)), biomart$Gene.stable.ID)
+norm_anno$DESCRIPTION <- biomart$Gene.description[idx]
+norm_anno$CHR <- biomart$Chromosome.scaffold.name[idx]
+```
+
 # Variance stabilizing transformation
 
 In order to test for differential expression, we operate on raw counts and use discrete distributions. However for other downstream analyses - e.g. for visualization or clustering - it might be useful to work with transformed versions of the count data.
@@ -1188,7 +1107,7 @@ DESeq2 has two alternative approaches that offer more theoretical justification 
 
 The point of these two transformations, the VST and the rlog, is to remove the dependence of the variance on the mean, particularly the high variance of the logarithm of count data when the mean is low. Both VST and rlog use the experiment-wide trend of variance over mean, in order to transform the data to remove the experiment-wide trend. Note that we do not require or desire that all the genes have exactly the same variance after transformation. Indeed, in a figure below, you will see that after the transformations the genes with the same mean do not have exactly the same standard deviations, but that the experiment-wide trend has flattened. It is those genes with row variance above the trend which will allow us to cluster samples into interesting groups.
 
-The two functions, vst and rlog have an argument blind, for whether the transformation should be blind to the sample information specified by the design formula. When blind equals TRUE (the default), the functions will re-estimate the dispersions using only an intercept. *This setting should be used in order to compare samples in a manner wholly unbiased by the information about experimental groups, for example to perform sample QA (quality assurance) as demonstrated below.*
+The two functions, vst and rlog have an argument blind, for whether the transformation should be blind to the sample information specified by the design formula. When blind equals TRUE (the default), the functions will re-estimate the dispersions using only an intercept. **This setting should be used in order to compare samples in a manner wholly unbiased by the information about experimental groups, for example to perform sample QA (quality assurance) as demonstrated below.**
 
 However, blind dispersion estimation is not the appropriate choice if one expects that many or the majority of genes (rows) will have large differences in counts which are explainable by the experimental design, and one wishes to transform the data for downstream analysis. In this case, using blind dispersion estimation will lead to large estimates of dispersion, as it attributes differences due to experimental design as unwanted noise, and will result in overly shrinking the transformed values towards each other. By setting blind to FALSE, the dispersions already estimated will be used to perform transformations, or if not present, they will be estimated using the current design formula. Note that only the fitted dispersion estimates from mean-dispersion trend line are used in the transformation (the global dependence of dispersion on mean for the entire experiment). So setting blind to FALSE is still for the most part not using the information about which samples were in which experimental group in applying the transformation.
 
@@ -1206,8 +1125,8 @@ meanSdPlot(as.matrix(assay(dds_vst)), ranks = FALSE,
 
 ## Specify sample annotation for plotting
 ```{r}
-# choose columns from samples table for heatmap annotation
-plot_annotation <- sample_table[,c("condition","Mouse_ID","pseudoaligned_reads", "percent_aligned"), drop = F]
+# choose columns from sampletable for heatmap annotation
+plot_annotation <- sample_table[,c("condition","age","Mouse_ID","pseudoaligned_reads", "percent_aligned"), drop = F]
 
 rownames(plot_annotation) <- sample_table$ID
 plot_annotation$Mouse_ID <- as.factor(plot_annotation$Mouse_ID)
@@ -1230,7 +1149,6 @@ ggplot(TypeCounts, aes(x=Type, y= Frequency,  label=Frequency))+
 
 ggsave(file.path(dir, "Analysis", "Plots", paste(Sys.Date(),"_genetypes.pdf", sep = "")))
 ```
-The majority of the genes are protein coding. Interestingly, there are still some non-mRNA species in the data. 
 
 ## Hierarchical Clustering of all present genes
 
@@ -1239,12 +1157,13 @@ The majority of the genes are protein coding. Interestingly, there are still som
 heatmap <- t(norm)
 row.names(heatmap) <- sample_table$ID
 heatmap_scale <- t(scale(heatmap))
+heatmap_scale <- heatmap_scale[,rownames(sample_table[order(sample_table$Genotype_Age, decreasing = FALSE),])]
 ```
 
 
 #### clustered Columns & Rows
 ```{r, echo=TRUE, message=FALSE, results='hide', fig.height=10, fig.width=12}
-pheatmap(heatmap_scale[1:10,1:10],
+pheatmap(heatmap_scale,
          main="Heatmap of all present genes",
          show_rownames=FALSE,
          show_colnames=TRUE,
@@ -1271,43 +1190,6 @@ pheatmap(heatmap_scale,
 gc()
 ```
 
-### Deviation from variance-stabilized means {.tabset .tabset-fade}
-```{r, echo=TRUE}
-heatmap_vst <- as.data.frame(assay(dds_vst))
-heatmap_vst  <- heatmap_vst - rowMeans(heatmap_vst)
-colnames(heatmap_vst) <- sample_table$ID
-heatmap_vst_scale <- t(scale(t(heatmap_vst)))
-```
-
-####  clustered Columns & Rows
-```{r, echo=TRUE, message=FALSE, results='hide', fig.height=10, fig.width=12}
-pheatmap(heatmap_vst_scale,
-         main="Heatmap of all present genes",
-         show_rownames=FALSE,
-         show_colnames=TRUE,
-         fontsize = 7,
-         annotation_col = plot_annotation, 
-         breaks = scaleColors(heatmap_vst_scale, 2)[["breaks"]], 
-         color = scaleColors(heatmap_vst_scale, 2)[["color"]])
-```
-
-####  clustered Rows
-```{r, echo=TRUE, message=FALSE, results='hide', fig.height=10, fig.width=12}
-pheatmap(heatmap_vst_scale,
-         main="Heatmap of all present genes",
-         show_rownames=FALSE,
-         show_colnames=TRUE,
-         fontsize = 7,
-         cluster_cols = F,
-         annotation_col = plot_annotation, 
-         breaks = scaleColors(heatmap_vst_scale, 2)[["breaks"]], 
-         color = scaleColors(heatmap_vst_scale, 2)[["color"]])
-```
-
-```{r,echo=FALSE,message=FALSE}
-gc() # garbage clean
-```
-
 ## Hierarchical Clustering of most variable genes
 
 ### Scaled normalized Counts {.tabset .tabset-fade}
@@ -1319,6 +1201,7 @@ q75_vst = assay(dds_vst)[rv > q75,]
 heatmap_variablegenes <- t(q75_vst)
 row.names(heatmap_variablegenes) <- sample_table$ID
 heatmap_variablegenes_scale <- t(scale(heatmap_variablegenes))
+heatmap_variablegenes_scale <- heatmap_scale[,rownames(sample_table[order(sample_table$Genotype_Age, decreasing = FALSE),])]
 ```
 
 ####  clustered Columns & Rows
@@ -1329,8 +1212,8 @@ pheatmap(heatmap_variablegenes_scale,
          show_colnames=TRUE,
          fontsize = 7,
          annotation_col = plot_annotation, 
-         breaks = scaleColors(heatmap_vst_scale, 2)[["breaks"]], 
-         color = scaleColors(heatmap_vst_scale, 2)[["color"]])
+         breaks = scaleColors(heatmap_variablegenes_scale, 2)[["breaks"]], 
+         color = scaleColors(heatmap_variablegenes_scale, 2)[["color"]])
 ```
 
 ####  clustered Rows
@@ -1342,8 +1225,8 @@ pheatmap(heatmap_variablegenes_scale,
          fontsize = 7,
          cluster_cols = F,
          annotation_col = plot_annotation, 
-         breaks = scaleColors(heatmap_vst_scale, 2)[["breaks"]], 
-         color = scaleColors(heatmap_vst_scale, 2)[["color"]])
+         breaks = scaleColors(heatmap_variablegenes_scale, 2)[["breaks"]], 
+         color = scaleColors(heatmap_variablegenes_scale, 2)[["color"]])
 ```
 
 ## Sample-to-Sample distances {.tabset .tabset-fade}
@@ -1384,25 +1267,18 @@ pheatmap(sampleDist,
          fontsize = 6)
 ```
 
-## Principle Component Analysis {.tabset .tabset-fade}
+## Principle Component Analysis 
 Related to the distance matrix is the PCA plot, which shows the samples in the 2D plane spanned by two principal components. This type of plot is useful for visualizing the overall effect of experimental covariates and batch effects.
 To understand the basics of PCA, watch: https://www.youtube.com/watch?v=_UVHneBUBW0
 
-```{r, echo=TRUE, message=FALSE}
-plot_pca(input=dds_vst,
-                        shape_opt="Sex",
-                        ntop="all", PC_1=1, PC_2=2,
-                        color_obj="Genotype_Age",
-                        anno_colour=Genotype_Age_col,
-                        continuous=F,
-                        colour_gradient=bluered(100),
-                        point_size=3,
-         title="PCA of all genes")
-
-```
-
-### Condition
+### Percentage of explained variance of PCs
 ```{r}
+pca <- prcomp(t(assay(dds_vst)))
+fviz_eig(pca, main= "Eigenvalues")
+```
+### PCA {.tabset .tabset-fade}
+#### Condition
+```{r, fig.width=6, fig.height=6, fig}
 plot_pca(input=dds_vst,
                         shape_opt="Sex",
                         ntop="all", PC_1=1, PC_2=2,
@@ -1414,11 +1290,11 @@ plot_pca(input=dds_vst,
          title="Principle Component Analysis based on variance-stabilized counts")
 ```
 
-### Donor Mouse
-```{r}
+#### Donor Mouse
+```{r, fig.width=6, fig.height=6}
 sample_table$Mouse_ID<-as.factor(sample_table$Mouse_ID)
 plot_pca(input=dds_vst,
-                        shape_opt="Sex",
+                        shape_opt="NULL",
                         ntop="all", PC_1=1, PC_2=2,
                         color_obj="Mouse_ID",
                         anno_colour=NULL,
@@ -1428,8 +1304,8 @@ plot_pca(input=dds_vst,
          title="Principle Component Analysis based on variance-stabilized counts")
 ```
 
-### Pseudoaligned Reads
-```{r}
+#### Pseudoaligned Reads
+```{r, fig.width=6, fig.height=6}
 plot_pca(input=dds_vst,
                         shape_opt="NULL",
                         ntop="all", PC_1=1, PC_2=2,
@@ -1441,8 +1317,8 @@ plot_pca(input=dds_vst,
          title="Principle Component Analysis based on variance-stabilized counts")
 ```
 
-### Percent of aligned reads
-```{r}
+#### Percent of aligned reads
+```{r, fig.width=6, fig.height=6}
 plot_pca(input=dds_vst,
                         shape_opt="NULL",
                         ntop="all", PC_1=1, PC_2=2,
@@ -1454,10 +1330,11 @@ plot_pca(input=dds_vst,
          title="Principle Component Analysis based on variance-stabilized counts")
 ```
 
+
+
+
 ## PCA loadings
 ```{r}
-pca <- prcomp(t(assay(dds_vst)))
-
 getLoadings <- function(PC){
   PC_loadings <- pca$rotation[,PC]
   PC_loadings <- PC_loadings[order(PC_loadings, decreasing = T)]
@@ -1467,15 +1344,17 @@ getLoadings <- function(PC){
 
 PC1_loadings <- getLoadings("PC1")
 PC2_loadings <- getLoadings("PC2")
+PC3_loadings <- getLoadings("PC3")
 
 plotLoadings <- function(Loadings, PC){
-  HC <- norm_anno[rownames(norm_anno) %in% Loadings,]
-  rownames(HC) <- HC$SYMBOL
-  HC <- HC[,!colnames(HC) %in% c("ENS_ID","SYMBOL","GENETYPE")]
-  HC_scale <- as.matrix(t(scale(t(HC))))
+  heatmap <- norm_anno[rownames(norm_anno) %in% Loadings,]
+  rownames(heatmap) <- heatmap$SYMBOL
+  heatmap <- heatmap[,colnames(heatmap) %in% sample_table$ID]
+  heatmap_scale <- as.matrix(t(scale(t(heatmap))))
+  heatmap_scale <- heatmap_scale[,rownames(sample_table[order(sample_table$Genotype_Age, decreasing = FALSE),])]
   
   # Heatmap
-  pheatmap(HC_scale,
+  pheatmap(heatmap_scale,
            main=paste("Hierarchical Clustering of top20 ",PC, " loadings in both directions",sep=""),
            show_rownames=TRUE,
            show_colnames = TRUE,
@@ -1483,8 +1362,9 @@ plotLoadings <- function(Loadings, PC){
            cluster_cols = F,
            fontsize=5)
 }
-plotLoadings(PC1_loadings,"PC1")
-plotLoadings(PC2_loadings,"PC2")
+plotLoadings(Loadings = PC1_loadings,PC="PC1")
+plotLoadings(Loadings = PC2_loadings,PC="PC2")
+plotLoadings(Loadings = PC3_loadings,PC="PC3")
 ```
 
 # Gene-to-Gene Correlation Analysis over all samples
@@ -1503,32 +1383,21 @@ rcor_filt_melt <- melt(rcor_filt,na.rm = TRUE)
 rcor_filt_melt_cutoff <- rcor_filt_melt[rcor_filt_melt$value>0.95,]
 head(rcor_filt_melt_cutoff)
 
-# calculate and plot deviation from rlog mean
-mat  <- q75_vst - rowMeans(q75_vst)
-pheatmap(mat[rownames(mat)%in% rcor_filt_melt_cutoff$Var1,],
-         main="Hierarchical Clustering of the deviation from variance-stabilized mean",
-         # color = bluered(100),
-         show_rownames=FALSE,
-         show_colnames = TRUE,
-         cluster_cols = FALSE,
-         annotation_col = plot_annotation,
-         fontsize=8, 
-         breaks = scaleColors(data = mat, maxvalue = 2)[["breaks"]], 
-         color = scaleColors(data = mat, maxvalue = 2)[["color"]])
-
 # calculate and plot scaled normalized values
 tmp <- as.data.frame(t(norm))
 scaled_norm <- t(scale(t(norm)))
-#pheatmap(scaled_norm[rownames(scaled_norm)%in% rcor_filt_melt_cutoff$Var1,],
-#         main="Hierarchical Clustering of the scaled normalized values",
-#         color = bluered(75),
-#         show_rownames=FALSE,
-#         show_colnames = TRUE,
-#         cluster_cols = FALSE,
-#         annotation_col = plot_annotation,
-#         fontsize=8, 
-#         breaks = scaleColors(heatmap_vst_scale, 2)[["breaks"]], 
-#         color = scaleColors(heatmap_vst_scale, 2)[["color"]])
+scaled_norm <- scaled_norm[,rownames(sample_table[order(sample_table$Genotype_Age, decreasing = FALSE),])]
+input <- scaled_norm[rownames(scaled_norm)%in% rcor_filt_melt_cutoff$Var1,]
+
+pheatmap(input,
+        main="Hierarchical Clustering of the scaled normalized values",
+        show_rownames=FALSE,
+        show_colnames = TRUE,
+        cluster_cols = FALSE,
+        annotation_col = plot_annotation,
+        fontsize=8,
+        breaks = scaleColors(input, 2)[["breaks"]],
+        color = scaleColors(input, 2)[["color"]])
 ```
 
 # Check for batch effect within the data
@@ -1667,14 +1536,24 @@ DE_object <- DEAnalysis(alpha_option=0.05,
 #DE_object$tg_VS_wt@Number_DE_genes$`down-regulated genes`
 ```
 
-### Plotting the expression of a single gene among conditions
+### Visualization of DE results
+
+```{r}
+
+```
+
+
+# Plotting the expression of a single gene across conditions
+
+There needs to be some changes due to the two added columns "DESCRIPTION" & "CHR" in norm_anno!
+
 Single genes can be observes. It is still of debate whether to use the normalized counts for this function or to use the batch-corrected counts as input. 
 ```{r}
 # You can either enter norm_anno to plot the normalized counts or dds_batch_corrected to plot the batch-corrected counts
 plot_single_gene(input=norm_anno, gene_symbol="Crybg3", 
                                        condition="Genotype_Age", anno_colour=Genotype_Age_col,
                                        shape_opt="age")
-norm_anno[which(duplicated(norm_anno$SYMBOL,)),]$SYMBOL
+norm_anno[which(duplicated(norm_anno$SYMBOL)),]$SYMBOL
 ```
 
 
