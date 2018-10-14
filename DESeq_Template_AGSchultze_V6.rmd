@@ -73,7 +73,7 @@ output:
 ## Project directory
 Specify the project directory here: 
 ```{r, warning=F}
-dir <- "E:/sciebo/DESeq2_pipeline"
+dir <- "E:/Stefanie/Pipelines/RNA-DESeq2/"
 
 # creating directories if not already existing:
 dir.create(file.path(dir, "Analysis", "Tables"), recursive = T)
@@ -857,11 +857,10 @@ Reads FastQC MultiQC output and merges the information with the sample_table
 ```{r MultiQC import}
 fastq_qc <- read.delim(file.path(dir, "Data", "output", "qc", "multiqc", "multiqc_data", "multiqc_fastqc.txt"), stringsAsFactors = F)
 fastq_qc$Sample <- unlist(lapply(strsplit(fastq_qc$Sample, split = "_"), `[[`, 2)) # changes sample identifiers
-#fastq_qc <- fastq_qc[, c("Sample", "Total.Sequences", "Sequences.flagged.as.poor.quality", "X.GC", "total_deduplicated_percentage", "avg_sequence_length", "basic_statistics", "per_base_sequence_quality", "per_tile_sequence_quality", "per_sequence_quality_scores", "per_base_sequence_content", "per_sequence_gc_content","per_base_n_content", "sequence_length_distribution", "sequence_duplication_levels", "overrepresented_sequences", "adapter_content")]
 
-# Merge QC and sample files (include only the samples that are also in the sample table)
-sample_table <- merge(sample_table, fastq_qc, by.y = "Sample", by.x = "ID")
-rownames(sample_table) <- sample_table$ID
+# Merge QC and sample files (include only the samples that are also in the sample table) to a sample_table_fastqc table that contains information in all individual runs
+sample_table_allqc <- merge(sample_table, fastq_qc, by.y = "Sample", by.x = "ID")
+rownames(sample_table_allqc) <- make.unique(as.character(sample_table_allqc$ID), sep = ".")
 ```
 
 ## Kallisto QC
@@ -872,7 +871,10 @@ kallisto_qc <- read.delim(file.path(dir, "Data", "output", "kallisto", "multiqc"
 # change sample column 
 kallisto_qc$Sample <- do.call(rbind, strsplit(kallisto_qc$Sample, split = "\\_"))[,1]
 
-# Merge QC and sample files 
+# Merge kallisto QC to fastQC on runs for QC heatmap
+sample_table_allqc <- merge(sample_table_allqc, kallisto_qc, by.y = "Sample", by.x = "ID")
+rownames(sample_table_allqc) <- sample_table_allqc$ID
+
 sample_table <- merge(sample_table, kallisto_qc, by.y = "Sample", by.x = "ID")
 rownames(sample_table) <- sample_table$ID
 ```
@@ -882,9 +884,8 @@ rownames(sample_table) <- sample_table$ID
 ### HC of FastQC overall quality
 
 ```{r}
-QCHeatmap <- function(){
+QCHeatmap <- function(mat = sample_table_allqc){
   
-  mat <- sample_table
   rownames(mat) <- paste(mat$ID, mat$sample_name, sep = "_")
   mat$sample_name <- as.character.factor(mat$sample_name)
   mat$Sex <- as.character.factor(mat$Sex)
@@ -1000,9 +1001,28 @@ QCHeatmap <- function(){
 ```
 
 ```{r QC Heatmap, cache= T, fig.height= 15}
-QCHeatmap()
+QCHeatmap(mat = sample_table_allqc)
 ```
 
+Plot pseudoaligned and total reads
+```{r}
+tab <- sample_table[!duplicated(sample_table$ID),]
+tab <-tab[,c("ID", "pseudoaligned_reads","total_reads")]
+tab <-gather(tab, "total_reads", "pseudoaligned_reads", key = "type", value = "reads")
+
+ggplot(tab[tab$type %in% c("pseudoaligned_reads", "total_reads"),], aes(x = reorder(ID,-reads), y = reads, fill = type)) + 
+  geom_bar(stat = "identity", position = "dodge", colour = "black") + 
+  scale_y_continuous(breaks = c(2 * 10^6, 5 * 10^6, 10 * 10^6, 20 * 10^6, 30 * 10^6, 30 * 10^6, 40 * 10^6))+
+  scale_fill_manual(name = "", values = c("#7fcdbb", "#edf8b1")) + 
+  ylab("Reads") + 
+  xlab("Sample IDs") + 
+  ggtitle("Total reads and aligned reads") +
+  theme(axis.text.x = element_text(angle = 70, size = 9, hjust = 1, vjust = 1), 
+        strip.background = element_rect(fill = "white"), 
+        panel.background = element_rect(fill = "white", colour = "black"), 
+        legend.position = "bottom"
+  )
+```
 
 ## Exclude samples after QC (based e.g. on number of unique alignments, percent of aligned reads?)
 ```{r qc sample exclusion}
