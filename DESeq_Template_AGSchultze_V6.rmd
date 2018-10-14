@@ -1246,7 +1246,7 @@ pheatmap(heatmap_variablegenes_scale,
 ####  clustered Rows
 ```{r, echo=TRUE, message=FALSE, results='hide', fig.height=10, fig.width=12}
 pheatmap(heatmap_variablegenes_scale,
-         main="Heatmap of most variavle genes",
+         main="Heatmap of most variable genes",
          show_rownames=FALSE,
          show_colnames=TRUE,
          fontsize = 7,
@@ -1389,6 +1389,9 @@ plotLoadings <- function(Loadings, PC){
            show_rownames=TRUE,
            show_colnames = TRUE,
            annotation_col = plot_annotation,
+           annotation_colors = ann_colors,
+           breaks = scaleColors(heatmap_variablegenes_scale, 2)[["breaks"]], 
+           color = scaleColors(heatmap_variablegenes_scale, 2)[["color"]],
            cluster_cols = F,
            fontsize=5)
 }
