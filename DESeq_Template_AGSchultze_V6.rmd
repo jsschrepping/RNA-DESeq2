@@ -1227,7 +1227,7 @@ q75_vst = assay(dds_vst)[rv > q75,]
 heatmap_variablegenes <- t(q75_vst)
 row.names(heatmap_variablegenes) <- sample_table$ID
 heatmap_variablegenes_scale <- t(scale(heatmap_variablegenes))
-heatmap_variablegenes_scale <- heatmap_scale[,rownames(sample_table[order(sample_table$Genotype_Age, decreasing = FALSE),])]
+heatmap_variablegenes_scale <- heatmap_variablegenes_scale[,rownames(sample_table[order(sample_table$Genotype_Age, decreasing = FALSE),])]
 ```
 
 ####  clustered Columns & Rows
