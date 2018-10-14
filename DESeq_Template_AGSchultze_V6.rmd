@@ -818,14 +818,19 @@ plot_single_gene <-function(input=norm_anno, gene_symbol="Crybg3",
 Define you colour schemes according to your data set and your variables
 
 ```{r}
-Genotype <- c("#90D95E", "#86BE9E")
-names(Genotype) <- c("wt", "tg") 
-Age = c("#FFEDA0", "#FEB24C", "#F03B20")
-names(Age) <- c("4mo", "8mo", "12mo")
+condition <- c("#90D95E", "#86BE9E")
+names(condition) <- c("wt", "tg") 
+age = c("#FFEDA0", "#FEB24C", "#F03B20")
+names(age) <- c("4mo", "8mo", "12mo")
 Sex <- c("##66C3D0", "#008DD2")
 names(Sex) <- c("f", "m")
-Genotype_Age_col <- c(brewer.pal(3, "Blues"), brewer.pal(3, "Oranges"))
-names(Genotype_Age_col) <- c("wt_4mo", "wt_8mo", "wt_12mo", "tg_4mo", "tg_8mo", "tg_12mo")
+Genotype_Age <- c(brewer.pal(3, "Blues"), brewer.pal(3, "Oranges"))
+names(Genotype_Age) <- c("wt_4mo", "wt_8mo", "wt_12mo", "tg_4mo", "tg_8mo", "tg_12mo")
+
+ann_colors <- list(Genotype = Genotype, 
+                  Age = Age, 
+                  Sex = Sex,
+                  Genotype_Age = Genotype_Age)
 ```
 
 
@@ -1188,6 +1193,7 @@ pheatmap(heatmap_scale,
          show_colnames=TRUE,
          fontsize = 7,
          annotation_col = plot_annotation,
+         annotation_colors = ann_colors,
          breaks = scaleColors(maxvalue = 2)[["breaks"]], 
          color = scaleColors(maxvalue = 2)[["color"]])
 ```
@@ -1201,6 +1207,7 @@ pheatmap(heatmap_scale,
          fontsize = 7,
          cluster_cols = F,
          annotation_col = plot_annotation, 
+         annotation_colors = ann_colors,
          breaks = scaleColors(heatmap_scale, 2)[["breaks"]], 
          color = scaleColors(heatmap_scale, 2)[["color"]])
 ```
@@ -1231,6 +1238,7 @@ pheatmap(heatmap_variablegenes_scale,
          show_colnames=TRUE,
          fontsize = 7,
          annotation_col = plot_annotation, 
+         annotation_colors = ann_colors,
          breaks = scaleColors(heatmap_variablegenes_scale, 2)[["breaks"]], 
          color = scaleColors(heatmap_variablegenes_scale, 2)[["color"]])
 ```
@@ -1244,6 +1252,7 @@ pheatmap(heatmap_variablegenes_scale,
          fontsize = 7,
          cluster_cols = F,
          annotation_col = plot_annotation, 
+         annotation_colors = ann_colors,
          breaks = scaleColors(heatmap_variablegenes_scale, 2)[["breaks"]], 
          color = scaleColors(heatmap_variablegenes_scale, 2)[["color"]])
 ```
@@ -1263,6 +1272,7 @@ pheatmap(sampleCor,
          main="Sample Correlation based on normalized counts per sample",
          annotation_row = plot_annotation,
          annotation_col = plot_annotation,
+         annotation_colors = ann_colors,
          cluster_rows = F,
          cluster_cols = F,
          fontsize = 6)
@@ -1283,6 +1293,7 @@ pheatmap(sampleDist,
          main="Sample Distances based on variance-stabilized counts per sample",
          annotation_row = plot_annotation, 
          annotation_col = plot_annotation,
+         annotation_colors = ann_colors,
          fontsize = 6)
 ```
 
@@ -1302,7 +1313,7 @@ plot_pca(input=dds_vst,
                         shape_opt="Sex",
                         ntop="all", PC_1=1, PC_2=2,
                         color_obj="Genotype_Age",
-                        anno_colour=Genotype_Age_col,
+                        anno_colour=Genotype_Age,
                         continuous=F,
                         colour_gradient=bluered(100),
                         point_size=3,
