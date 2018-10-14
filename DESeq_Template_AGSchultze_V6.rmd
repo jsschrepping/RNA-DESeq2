@@ -76,7 +76,6 @@ Specify the project directory here:
 dir <- "E:/sciebo/DESeq2_pipeline"
 
 # creating directories if not already existing:
-dir.create(file.path(dir, "Analysis"), recursive = T)
 dir.create(file.path(dir, "Analysis", "Tables"), recursive = T)
 dir.create(file.path(dir, "Analysis", "Plots"), recursive = T)
 ```
