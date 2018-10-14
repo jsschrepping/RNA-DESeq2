@@ -1233,7 +1233,7 @@ heatmap_variablegenes_scale <- heatmap_variablegenes_scale[,rownames(sample_tabl
 ####  clustered Columns & Rows
 ```{r, echo=TRUE, message=FALSE, results='hide', fig.height=10, fig.width=12}
 pheatmap(heatmap_variablegenes_scale,
-         main="Heatmap of all present genes",
+         main="Heatmap of most variable genes",
          show_rownames=FALSE,
          show_colnames=TRUE,
          fontsize = 7,
@@ -1246,7 +1246,7 @@ pheatmap(heatmap_variablegenes_scale,
 ####  clustered Rows
 ```{r, echo=TRUE, message=FALSE, results='hide', fig.height=10, fig.width=12}
 pheatmap(heatmap_variablegenes_scale,
-         main="Heatmap of all present genes",
+         main="Heatmap of most variavle genes",
          show_rownames=FALSE,
          show_colnames=TRUE,
          fontsize = 7,
