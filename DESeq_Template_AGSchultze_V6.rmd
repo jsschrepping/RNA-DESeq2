@@ -73,10 +73,9 @@ output:
 ## Project directory
 Specify the project directory here: 
 ```{r, warning=F}
-dir <- "E:/sciebo/DESeq2_pipeline"
+dir <- "E:/Stefanie/Pipelines/RNA-DESeq2/"
 
 # creating directories if not already existing:
-dir.create(file.path(dir, "Analysis"), recursive = T)
 dir.create(file.path(dir, "Analysis", "Tables"), recursive = T)
 dir.create(file.path(dir, "Analysis", "Plots"), recursive = T)
 ```
@@ -819,14 +818,19 @@ plot_single_gene <-function(input=norm_anno, gene_symbol="Crybg3",
 Define you colour schemes according to your data set and your variables
 
 ```{r}
-Genotype <- c("#90D95E", "#86BE9E")
-names(Genotype) <- c("wt", "tg") 
-Age = c("#FFEDA0", "#FEB24C", "#F03B20")
-names(Age) <- c("4mo", "8mo", "12mo")
+condition <- c("#90D95E", "#86BE9E")
+names(condition) <- c("wt", "tg") 
+age = c("#FFEDA0", "#FEB24C", "#F03B20")
+names(age) <- c("4mo", "8mo", "12mo")
 Sex <- c("##66C3D0", "#008DD2")
 names(Sex) <- c("f", "m")
-Genotype_Age_col <- c(brewer.pal(3, "Blues"), brewer.pal(3, "Oranges"))
-names(Genotype_Age_col) <- c("wt_4mo", "wt_8mo", "wt_12mo", "tg_4mo", "tg_8mo", "tg_12mo")
+Genotype_Age <- c(brewer.pal(3, "Blues"), brewer.pal(3, "Oranges"))
+names(Genotype_Age) <- c("wt_4mo", "wt_8mo", "wt_12mo", "tg_4mo", "tg_8mo", "tg_12mo")
+
+ann_colors <- list(Genotype = Genotype, 
+                  Age = Age, 
+                  Sex = Sex,
+                  Genotype_Age = Genotype_Age)
 ```
 
 
@@ -858,11 +862,10 @@ Reads FastQC MultiQC output and merges the information with the sample_table
 ```{r MultiQC import}
 fastq_qc <- read.delim(file.path(dir, "Data", "output", "qc", "multiqc", "multiqc_data", "multiqc_fastqc.txt"), stringsAsFactors = F)
 fastq_qc$Sample <- unlist(lapply(strsplit(fastq_qc$Sample, split = "_"), `[[`, 2)) # changes sample identifiers
-#fastq_qc <- fastq_qc[, c("Sample", "Total.Sequences", "Sequences.flagged.as.poor.quality", "X.GC", "total_deduplicated_percentage", "avg_sequence_length", "basic_statistics", "per_base_sequence_quality", "per_tile_sequence_quality", "per_sequence_quality_scores", "per_base_sequence_content", "per_sequence_gc_content","per_base_n_content", "sequence_length_distribution", "sequence_duplication_levels", "overrepresented_sequences", "adapter_content")]
 
-# Merge QC and sample files (include only the samples that are also in the sample table)
-sample_table <- merge(sample_table, fastq_qc, by.y = "Sample", by.x = "ID")
-rownames(sample_table) <- sample_table$ID
+# Merge QC and sample files (include only the samples that are also in the sample table) to a sample_table_fastqc table that contains information in all individual runs
+sample_table_allqc <- merge(sample_table, fastq_qc, by.y = "Sample", by.x = "ID")
+rownames(sample_table_allqc) <- make.unique(as.character(sample_table_allqc$ID), sep = ".")
 ```
 
 ## Kallisto QC
@@ -873,7 +876,10 @@ kallisto_qc <- read.delim(file.path(dir, "Data", "output", "kallisto", "multiqc"
 # change sample column 
 kallisto_qc$Sample <- do.call(rbind, strsplit(kallisto_qc$Sample, split = "\\_"))[,1]
 
-# Merge QC and sample files 
+# Merge kallisto QC to fastQC on runs for QC heatmap
+sample_table_allqc <- merge(sample_table_allqc, kallisto_qc, by.y = "Sample", by.x = "ID")
+rownames(sample_table_allqc) <- sample_table_allqc$ID
+
 sample_table <- merge(sample_table, kallisto_qc, by.y = "Sample", by.x = "ID")
 rownames(sample_table) <- sample_table$ID
 ```
@@ -883,9 +889,8 @@ rownames(sample_table) <- sample_table$ID
 ### HC of FastQC overall quality
 
 ```{r}
-QCHeatmap <- function(){
+QCHeatmap <- function(mat = sample_table_allqc){
   
-  mat <- sample_table
   rownames(mat) <- paste(mat$ID, mat$sample_name, sep = "_")
   mat$sample_name <- as.character.factor(mat$sample_name)
   mat$Sex <- as.character.factor(mat$Sex)
@@ -1001,9 +1006,28 @@ QCHeatmap <- function(){
 ```
 
 ```{r QC Heatmap, cache= T, fig.height= 15}
-QCHeatmap()
+QCHeatmap(mat = sample_table_allqc)
 ```
 
+Plot pseudoaligned and total reads
+```{r}
+tab <- sample_table[!duplicated(sample_table$ID),]
+tab <-tab[,c("ID", "pseudoaligned_reads","total_reads")]
+tab <-gather(tab, "total_reads", "pseudoaligned_reads", key = "type", value = "reads")
+
+ggplot(tab[tab$type %in% c("pseudoaligned_reads", "total_reads"),], aes(x = reorder(ID,-reads), y = reads, fill = type)) + 
+  geom_bar(stat = "identity", position = "dodge", colour = "black") + 
+  scale_y_continuous(breaks = c(2 * 10^6, 5 * 10^6, 10 * 10^6, 20 * 10^6, 30 * 10^6, 30 * 10^6, 40 * 10^6))+
+  scale_fill_manual(name = "", values = c("#7fcdbb", "#edf8b1")) + 
+  ylab("Reads") + 
+  xlab("Sample IDs") + 
+  ggtitle("Total reads and aligned reads") +
+  theme(axis.text.x = element_text(angle = 70, size = 9, hjust = 1, vjust = 1), 
+        strip.background = element_rect(fill = "white"), 
+        panel.background = element_rect(fill = "white", colour = "black"), 
+        legend.position = "bottom"
+  )
+```
 
 ## Exclude samples after QC (based e.g. on number of unique alignments, percent of aligned reads?)
 ```{r qc sample exclusion}
@@ -1169,6 +1193,7 @@ pheatmap(heatmap_scale,
          show_colnames=TRUE,
          fontsize = 7,
          annotation_col = plot_annotation,
+         annotation_colors = ann_colors,
          breaks = scaleColors(maxvalue = 2)[["breaks"]], 
          color = scaleColors(maxvalue = 2)[["color"]])
 ```
@@ -1182,6 +1207,7 @@ pheatmap(heatmap_scale,
          fontsize = 7,
          cluster_cols = F,
          annotation_col = plot_annotation, 
+         annotation_colors = ann_colors,
          breaks = scaleColors(heatmap_scale, 2)[["breaks"]], 
          color = scaleColors(heatmap_scale, 2)[["color"]])
 ```
@@ -1201,17 +1227,18 @@ q75_vst = assay(dds_vst)[rv > q75,]
 heatmap_variablegenes <- t(q75_vst)
 row.names(heatmap_variablegenes) <- sample_table$ID
 heatmap_variablegenes_scale <- t(scale(heatmap_variablegenes))
-heatmap_variablegenes_scale <- heatmap_scale[,rownames(sample_table[order(sample_table$Genotype_Age, decreasing = FALSE),])]
+heatmap_variablegenes_scale <- heatmap_variablegenes_scale[,rownames(sample_table[order(sample_table$Genotype_Age, decreasing = FALSE),])]
 ```
 
 ####  clustered Columns & Rows
 ```{r, echo=TRUE, message=FALSE, results='hide', fig.height=10, fig.width=12}
 pheatmap(heatmap_variablegenes_scale,
-         main="Heatmap of all present genes",
+         main="Heatmap of most variable genes",
          show_rownames=FALSE,
          show_colnames=TRUE,
          fontsize = 7,
          annotation_col = plot_annotation, 
+         annotation_colors = ann_colors,
          breaks = scaleColors(heatmap_variablegenes_scale, 2)[["breaks"]], 
          color = scaleColors(heatmap_variablegenes_scale, 2)[["color"]])
 ```
@@ -1219,12 +1246,13 @@ pheatmap(heatmap_variablegenes_scale,
 ####  clustered Rows
 ```{r, echo=TRUE, message=FALSE, results='hide', fig.height=10, fig.width=12}
 pheatmap(heatmap_variablegenes_scale,
-         main="Heatmap of all present genes",
+         main="Heatmap of most variable genes",
          show_rownames=FALSE,
          show_colnames=TRUE,
          fontsize = 7,
          cluster_cols = F,
          annotation_col = plot_annotation, 
+         annotation_colors = ann_colors,
          breaks = scaleColors(heatmap_variablegenes_scale, 2)[["breaks"]], 
          color = scaleColors(heatmap_variablegenes_scale, 2)[["color"]])
 ```
@@ -1244,6 +1272,7 @@ pheatmap(sampleCor,
          main="Sample Correlation based on normalized counts per sample",
          annotation_row = plot_annotation,
          annotation_col = plot_annotation,
+         annotation_colors = ann_colors,
          cluster_rows = F,
          cluster_cols = F,
          fontsize = 6)
@@ -1264,6 +1293,7 @@ pheatmap(sampleDist,
          main="Sample Distances based on variance-stabilized counts per sample",
          annotation_row = plot_annotation, 
          annotation_col = plot_annotation,
+         annotation_colors = ann_colors,
          fontsize = 6)
 ```
 
@@ -1283,7 +1313,7 @@ plot_pca(input=dds_vst,
                         shape_opt="Sex",
                         ntop="all", PC_1=1, PC_2=2,
                         color_obj="Genotype_Age",
-                        anno_colour=Genotype_Age_col,
+                        anno_colour=Genotype_Age,
                         continuous=F,
                         colour_gradient=bluered(100),
                         point_size=3,
@@ -1359,6 +1389,9 @@ plotLoadings <- function(Loadings, PC){
            show_rownames=TRUE,
            show_colnames = TRUE,
            annotation_col = plot_annotation,
+           annotation_colors = ann_colors,
+           breaks = scaleColors(heatmap_variablegenes_scale, 2)[["breaks"]], 
+           color = scaleColors(heatmap_variablegenes_scale, 2)[["color"]],
            cluster_cols = F,
            fontsize=5)
 }
