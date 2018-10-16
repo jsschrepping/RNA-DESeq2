@@ -74,7 +74,7 @@ output:
 ## Project directory
 Specify the project directory here: 
 ```{r, warning=F}
-dir <- "E:/Stefanie/Pipelines/RNA-DESeq2/"
+dir <- "E:/sciebo/DESeq2_pipeline"
 
 # creating directories if not already existing:
 dir.create(file.path(dir, "Analysis", "Tables"), recursive = T)
