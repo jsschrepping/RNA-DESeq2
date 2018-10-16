@@ -6,16 +6,11 @@ output:
   html_document: 
     toc: true
     toc_float: true
-    theme: united
     number_sections: true
     code_folding: hide
-    
-    
 ---
 
-# TO DO: 
-
-* Zentraler Speicherort für Annotationsfiles
+# Done: 
 
 * sample annotation in table output (Nico) DONE
 * add Gene annotation to DE_object (Nico) DONE
@@ -23,7 +18,13 @@ output:
 * Same style for PCAs (Nico) DONE
 * merge fastqc and sample table (Steffi) DONE
 * QC plots: Alignment Statistik etc (Steffi) DONE
-* PCs 3 etc (done)/ explained variance plot for top PCs / Multiplot PCA (Jonas)
+
+# TO DO: 
+
+* Zentraler Speicherort fÃ¼r Annotationsfiles
+
+* Multiplot PCA (Jonas)
+* LFC Shrinkage always appropriate? Which shrinkage function? (all)
 * Heatmap function: Issue of duplicate gene symbols for visualization (Jonas)
 * cumulative variance plot for HC gene selection (Jonas)
 * add more annotation (e.g. gene description) to normalized count table  (Jonas)
@@ -84,16 +85,19 @@ dir.create(file.path(dir, "Analysis", "Plots"), recursive = T)
 ## Content of directory
 The project directory needs to contain a folder *Data* containing: 
 
-* The output folder of the bulk RNAseq-pipeline including the folders *kallisto* and *qc* 
-* If added by hand, the kallisto files should be in: *Data/output/kallisto/kallisto/*
-* If added by hand, the qc files should be in: *Data/output/kallisto/mutiqc/multiqc_data/multiqc_kallisto.txt* and *Data/output/qc/multiqc/multiqc_data/multiqc_fastqc.txt*. 
+* The output folder of the bulk RNAseq Kallisto pipeline including the folders *kallisto* and *qc* 
+* The kallisto files should be in: *Data/output/kallisto/kallisto/*
+* The qc files should be in: 
+      *Data/output/kallisto/mutiqc/multiqc_data/multiqc_kallisto.txt* and 
+      *Data/output/qc/multiqc/multiqc_data/multiqc_fastqc.txt*. 
 
-* sample table:  *Data/sample_table.txt*. This table should contain *at least* the following columns: 
+* sample table:  *Data/sample_table.txt*. 
 
+This table should contain *at least* the following columns: 
     + Sample Identifier (e.g. 3609): "ID"
     + Sample Name (e.g. wt_8mo_5870): "sample_name"
     + Condition (e.g. wt_8mo): "condition"   --> merged sample information that is used for DE calling 
-    + Additional information: gender, age, date of experiment, ... 
+    + Optional additional information: gender, age, date of experiment, ... 
 
 * gene annotation. Specify the filename here: 
 
@@ -107,33 +111,82 @@ annotation_filename <- "ID2SYMBOL_gencode_vM13_transcript.txt"
 All packages to load and install
 
 ```{r load packages, echo=FALSE, results='hide',message=FALSE,warning=FALSE}
-options(java.parameters = "-Xmx8000m")
-list.of.packages <- c("hwriter","RColorBrewer","tidyverse",
-                      "reshape2","dplyr","stringr","pheatmap",
-                      "colourlovers",'VennDiagram', "ggbeeswarm",
-                      "scales","magrittr", "tidyr","bit", 
-                      "data.table","RSQLite","Rcpp", "rJava", 
-                      "devtools", "matrixStats", "xlsx", "gridBase", 
-                      "survival", "rlang", "MASS", "ggforce",
-                      "tibble","stringi","gtools","ggrepel",
-                      "Hmisc", "gplots","factoextra")
+# CRAN packages
+list.of.packages <- c("hwriter",
+                      "RColorBrewer",
+                      "tidyverse",
+                      "reshape2",
+                      "dplyr",
+                      "stringr",
+                      "pheatmap",
+                      "colourlovers",
+                      "VennDiagram", 
+                      "ggbeeswarm",
+                      "scales",
+                      "magrittr", 
+                      "tidyr",
+                      "bit", 
+                      "data.table",
+                      "RSQLite",
+                      "Rcpp", 
+                      "devtools",
+                      "matrixStats", 
+                      "xlsx", 
+                      "gridBase", 
+                      "survival", 
+                      "rlang", 
+                      "MASS", 
+                      "ggforce",
+                      "tibble",
+                      "stringi",
+                      "gtools",
+                      "ggrepel",
+                      "Hmisc", 
+                      "gplots",
+                      "ggplot2",
+                      "factoextra")
+
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+
 if(length(new.packages)>0) install.packages(new.packages)
-list.of.bioc.packages<- c("rhdf5","DESeq2","IHW","clusterProfiler","GSEABase","AnnotationDbi",
-                          "sva","tximport","limma","geneplotter","genefilter","org.Mm.eg.db","org.Hs.eg.db",
-                          "biomaRt", "ReactomePA", "grid","pcaGoPromoter","pcaGoPromoter.Hs.hg19",
-                          "pcaGoPromoter.Mm.mm9", "limma", "DOSE","vsn",  "ComplexHeatmap")
+
+# BioconductoR packages
+list.of.bioc.packages<- c("rhdf5",
+                          "DESeq2",
+                          "IHW",
+                          "clusterProfiler",
+                          "GSEABase",
+                          "AnnotationDbi",
+                          "sva",
+                          "tximport",
+                          "limma",
+                          "geneplotter",
+                          "genefilter",
+                          "org.Mm.eg.db",
+                          "org.Hs.eg.db",
+                          "biomaRt", 
+                          "ReactomePA", 
+                          "grid",
+                          "pcaGoPromoter",
+                          "pcaGoPromoter.Hs.hg19",
+                          "pcaGoPromoter.Mm.mm9", 
+                          "limma", 
+                          "DOSE",
+                          "vsn",
+                          "ComplexHeatmap")
+
 new.packages.bioc <- list.of.bioc.packages[!(list.of.bioc.packages %in% installed.packages()[,"Package"])]
+
 source("https://bioconductor.org/biocLite.R")
 if(length(new.packages.bioc)>0) biocLite(new.packages.bioc,suppressUpdates=TRUE)
+
 lapply(c(list.of.packages,list.of.bioc.packages), require, character.only = TRUE)
 ```
 
-## Define global functions
-Definition of all global functions used in this script
+## Define analysis functions
 
 ```{r global functions, hide = T, cache = T}
-
+# Function to perform variance stabilizing transformation (rlog for less than 30 samples, vst for more than 30 samples)
 varStab<- function(blind_param=T){
   if(length(samples_to_keep)<30){
     rld<-rlog(dds, blind=blind_param)
@@ -143,6 +196,7 @@ varStab<- function(blind_param=T){
   }
 }
 
+# Function for plotting multiple plots in grid
 multiplot<-function(..., plotlist=NULL, file, cols=1, layout=NULL) {
   library(grid)
   
@@ -179,9 +233,13 @@ multiplot<-function(..., plotlist=NULL, file, cols=1, layout=NULL) {
   }
 }
 
+
+# Specify structure of DESeq2_analysis_object
 setClass(Class = "DESeq2_analysis_object",
          slots = c(parameters="list", results="data.frame", DE_genes="list", Number_DE_genes="list"))
 
+
+# Wrapper Function to perform DESeq2 differential testing
 DEAnalysis <- function(alpha_option=0.05, 
                          lfc_Threshold=0,
                          condition=condition,
@@ -194,6 +252,8 @@ DEAnalysis <- function(alpha_option=0.05,
     # Define parameters
     for (i in 1:nrow(comparison_table)){
       list_DE_genes <- list()
+      
+      # IHW
       if (multiple_testing=="IHW") {
         res_deseq_lfc <- results(dds,
                                  contrast = c(condition,
@@ -203,17 +263,28 @@ DEAnalysis <- function(alpha_option=0.05,
                                  alpha = alpha_option,
                                  filterFun = ihw,
                                  altHypothesis = "greaterAbs")
+                
+        # Do we necessarily always want to perform the fold change shrinkage? Which shrinkage function do we want to use?
         res_deseq_lfc <- lfcShrink(dds, 
                                    contrast = c(condition,
                                                 paste(comparison_table$comparison[i]),
                                                 paste(comparison_table$control[i])),
                                    res=res_deseq_lfc)
-        
         res_deseq_lfc <- as.data.frame(res_deseq_lfc)
+        
+        # Now we delog-transform the shrunken fold changes?
         res_deseq_lfc$FC <- logratio2foldchange(res_deseq_lfc$log2FoldChange,base=2)
-        res_deseq_lfc$significance<-ifelse(res_deseq_lfc$padj <=alpha_option&!is.na(res_deseq_lfc$padj)&(res_deseq_lfc$log2FoldChange>lfc_Threshold|res_deseq_lfc$log2FoldChange<(-lfc_Threshold)), "T", "F")
+        
+        res_deseq_lfc$significance <- ifelse(res_deseq_lfc$padj <=alpha_option&
+                                             !is.na(res_deseq_lfc$padj)&
+                                             abs(res_deseq_lfc$log2FoldChange)>lfc_Threshold, 
+                                           "T", 
+                                           "F")
+        
         res_deseq_lfc$regulation <-ifelse(res_deseq_lfc$log2FoldChange>lfc_Threshold,"up","down")
       }
+      
+      # Independent Filtering
       else {
         res_deseq_lfc <- results(dds,
                                  contrast = c(condition,
@@ -224,36 +295,61 @@ DEAnalysis <- function(alpha_option=0.05,
                                  independentFiltering = T,
                                  altHypothesis = "greaterAbs",
                                  pAdjustMethod=multiple_testing)
+        
         res_deseq_lfc <- lfcShrink(dds, 
                                    contrast = c(condition,
                                                 paste(comparison_table$comparison[i]), 
                                                 paste(comparison_table$control[i])),
                                    res=res_deseq_lfc)
+        
         res_deseq_lfc <- as.data.frame(res_deseq_lfc)
+        
         res_deseq_lfc$FC <- logratio2foldchange(res_deseq_lfc$log2FoldChange,base=2)
-        res_deseq_lfc$significance<-ifelse(res_deseq_lfc$padj <=alpha_option&!is.na(res_deseq_lfc$padj)&(res_deseq_lfc$log2FoldChange>lfc_Threshold|res_deseq_lfc$log2FoldChange<(-lfc_Threshold)), "T", "F")
+        
+        res_deseq_lfc$significance<-ifelse(res_deseq_lfc$padj<=alpha_option&                  
+                                            !is.na(res_deseq_lfc$padj)&
+                                            abs(res_deseq_lfc$log2FoldChange)>lfc_Threshold,
+                                           "T", 
+                                           "F")
+        
+        res_deseq_lfc$regulation <-ifelse(res_deseq_lfc$log2FoldChange>lfc_Threshold,"up","down")
       } 
+      # print parameters
       parameters <-list(multiple_testing, 
                         alpha_option, 
                         lfc_Threshold, 
                         paste(comparison_table$comparison[i]), 
                         paste(comparison_table$control[i]))
-      names(parameters)<-c("multiple_testing","p_value_threshold","lfc_threshold","comparison","control")
+      names(parameters)<-c("multiple_testing",
+                           "p_value_threshold",
+                           "lfc_threshold",
+                           "comparison",
+                           "control")
       DE_object@parameters <- parameters
+      
+      # add gene annotation to results table
       res_deseq_lfc$ENS_ID <- row.names(res_deseq_lfc) # ensembl-IDs as row names
+      res_deseq_lfc <- merge(res_deseq_lfc, 
+                             gene_annotation[!duplicated(gene_annotation$GENEID),c("GENEID", 
+                                                                                   "SYMBOL", 
+                                                                                   "GENETYPE")], 
+                             by.y = "GENEID", 
+                             by.x = "ENS_ID", 
+                             all.x = F) 
 
-      res_deseq_lfc <- merge(res_deseq_lfc, gene_annotation[!duplicated(gene_annotation$GENEID),c("GENEID", "SYMBOL", "GENETYPE")], by.y = "GENEID", by.x = "ENS_ID", all.x = F) 
-
-rownames(res_deseq_lfc) <- res_deseq_lfc$ENS_ID # could this line be deleted? Rownames are already ENS_ID
-res_deseq_lfc$ENS_ID<-NULL
-res_deseq_lfc$comparison<-paste(comparison_table$comparison[i],"VS",comparison_table$control[i],sep="_")
-res_deseq_lfc<-res_deseq_lfc[c(13,11,12,1,2,3,4,5,6,7,8,9,10)] # is this a good idea? Could this solved more specifically without numbers?
+      res_deseq_lfc$ENS_ID<-NULL
+      res_deseq_lfc$comparison<-paste(comparison_table$comparison[i],"VS",comparison_table$control[i],
+                                      sep="_")
+      res_deseq_lfc<-res_deseq_lfc[c(13,11,12,1:10)] 
+      
       DE_object@results <- res_deseq_lfc
+      
+      # print DE genes 
       list_DE_genes <- list(rownames(res_deseq_lfc[!is.na(res_deseq_lfc$padj)&
-                                     res_deseq_lfc$padj<alpha_option&                                                                                            res_deseq_lfc$log2FoldChange>lfc_Threshold,]),
+                                                    res_deseq_lfc$padj<alpha_option&                                                                           res_deseq_lfc$log2FoldChange>lfc_Threshold,]),
                             rownames(res_deseq_lfc[!is.na(res_deseq_lfc$padj)&
-                                     res_deseq_lfc$padj<alpha_option&
-                                     res_deseq_lfc$log2FoldChange<(-lfc_Threshold),]))
+                                                    res_deseq_lfc$padj<alpha_option&
+                                                    res_deseq_lfc$log2FoldChange<(-lfc_Threshold),]))
       names(list_DE_genes) = c(paste("up-regulated genes"), 
                                paste("down-regulated genes"))
       DE_object@DE_genes <- list_DE_genes
@@ -262,10 +358,13 @@ res_deseq_lfc<-res_deseq_lfc[c(13,11,12,1,2,3,4,5,6,7,8,9,10)] # is this a good 
       number_of_genes<-list(up,down)
       names(number_of_genes)<-c("up-regulated genes","down-regulated genes")
     DE_object@Number_DE_genes <- number_of_genes
-    DE_objects[[paste(comparison_table$comparison[i], "VS", comparison_table$control[i], sep="_")]] <- assign(  paste(comparison_table$comparison[i]), DE_object)}
+    
+    DE_objects[[paste(comparison_table$comparison[i], "VS", comparison_table$control[i], sep="_")]] <- assign(paste(comparison_table$comparison[i]), DE_object)}
   return(DE_objects)
 }
 
+
+# Function to remove potential batch effects using limma
 removeBatchEffect_function <- function(x=rld_df,
                                        batch = sample_table[c("Mouse_ID")],
                                        batch_2=NULL,
@@ -286,10 +385,10 @@ removeBatchEffect_function <- function(x=rld_df,
                       batch2 = batch_2,
                       design = model))
     }
-    
   }
 }
 
+# Function to plot PCA after limma batch removal
 Limma_batch <- function(model=model.matrix(~sample_table$condition),
                         batch=sample_table$Sex,
                         batch_2=NULL,
