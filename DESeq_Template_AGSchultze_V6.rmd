@@ -6,44 +6,15 @@ output:
   html_document: 
     toc: true
     toc_float: true
-    number_sections: true
-    code_folding: hide
 ---
 
-#############################################################################
-# TO DO: 
-
-* Zentraler Speicherort für Annotationsfiles
-
-* LFC Shrinkage always appropriate? Which shrinkage function? (all)
-* Heatmap function: Issue of duplicate gene symbols for visualization (Jonas)
-* cumulative variance plot for HC gene selection (Jonas)
-* add more annotation (e.g. gene description) to normalized count table  (Jonas)
-* DE-gene downstream figures: MA-plot, Volcano, Gene set enrichment, ... (Jonas)
-* Analysis of union of DE genes: HC, CompareCluster, ... (Steffi)
-* Heatmap of GO genes (filtered for DE genes)
-* Custom GO enrichment visualization --> in ggplot2 (Steffi)
-* Add sample information to count table (Nico)
-
-* Interactive choosing of QC cutoff
-* check for unnecessary packages (e.g. r2excel)
-* Colour code: Input Konditionen, Output: Automatisierte Farbverteilung (Steffi)
-* interactive visualization of tables
-
-# Done: 
-* sample annotation in table output (Nico) DONE
-* add Gene annotation to DE_object (Nico) DONE
-* print gene expression for multiple matching Ensembl IDs (Nico) DONE
-* Same style for PCAs (Nico) DONE
-* merge fastqc and sample table (Steffi) DONE
-* QC plots: Alignment Statistik etc (Steffi) DONE
-###############################################################################
-
-# R requirements
+# 1. R requirements
 
 ## Install and load packages
 
-```{r load packages, echo=FALSE, results='hide',message=FALSE,warning=FALSE}
+First, we install all necessary CRAN and Bioconductor packages and load them into the session.
+
+```{r load packages, results='hide',message=FALSE,warning=FALSE}
 # CRAN packages
 list.of.packages <- c("hwriter",
                       "RColorBrewer",
@@ -77,7 +48,8 @@ list.of.packages <- c("hwriter",
                       "Hmisc", 
                       "gplots",
                       "ggplot2",
-                      "factoextra")
+                      "factoextra",
+                      "grid")
 
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
 
@@ -110,13 +82,15 @@ list.of.bioc.packages<- c("rhdf5",
 
 new.packages.bioc <- list.of.bioc.packages[!(list.of.bioc.packages %in% installed.packages()[,"Package"])]
 
-source("https://bioconductor.org/biocLite.R")
-if(length(new.packages.bioc)>0) biocLite(new.packages.bioc,suppressUpdates=TRUE)
+if(length(new.packages.bioc)>0)if (!requireNamespace("BiocManager")) install.packages("BiocManager")
+BiocManager::install(new.packages.bioc, update = FALSE)
 
 lapply(c(list.of.packages,list.of.bioc.packages), require, character.only = TRUE)
 ```
 
-## Define functions
+## Custom functions
+
+We define functions used for analysis and visualization of our data.
 
 ```{r global functions, hide = T, cache = T}
 # Function to create breaks and colour vectors scaled to 0 (middle) and a specified upper and lower bound value
@@ -127,16 +101,350 @@ scaleColors <- function(data = input_scale, # data to use
     maxvalue <- floor(min(abs(min(data)), max(data)))
   }
   if(max(data) > abs(min(data))){
-    myBreaks <- c(floor(-max(data)), seq(-maxvalue, maxvalue, 0.2),  ceiling(max(data)))
+    if(ceiling(max(data)) == maxvalue){
+      myBreaks <- c(floor(-max(data)), seq(-maxvalue+0.2, maxvalue-0.2, 0.2),  ceiling(max(data)))
+    } else{
+      myBreaks <- c(floor(-max(data)), seq(-maxvalue, maxvalue, 0.2),  ceiling(max(data)))
+    }
     paletteLength <- length(myBreaks)
     myColor <- colorRampPalette(c("blue", "white", "red"))(paletteLength)
   } else {
-    myBreaks <- c(floor(min(data)), seq(-maxvalue, maxvalue, 0.2),  ceiling(abs(min(data))))
+    if(-floor(min(data)) == maxvalue){
+      myBreaks <- c(floor(min(data)), seq(-maxvalue+0.2, maxvalue-0.2, 0.2),  ceiling(min(data)))
+    } else{
+      myBreaks <- c(floor(min(data)), seq(-maxvalue, maxvalue, 0.2),  ceiling(abs(min(data))))
+    }
     paletteLength <- length(myBreaks)
     myColor <- colorRampPalette(c("blue", "white", "red"))(paletteLength)
   }
  return(list(breaks = myBreaks, color = myColor))
 }
+
+# Plot BoxPlot of highest expressed genes
+highestGenes <- function(numGenes=10){
+  tmp <- norm_anno[,colnames(norm_anno) %in% sample_table$ID]
+  tmp <- tmp[order(rowMeans(tmp), decreasing = T),]
+  tmp <- tmp[1:numGenes,]
+  tmp <- melt(t(tmp))
+  colnames(tmp)<- c("sample","gene","value")
+  
+  idx <- match(tmp$gene,norm_anno$GENEID)
+  tmp$symbol <- as.factor(norm_anno$SYMBOL[idx])
+  tmp$symbol <- factor(tmp$symbol, levels = rev(unique(tmp$symbol)))
+  
+  ggplot(tmp, aes(x = tmp$symbol, y = value)) +
+      geom_boxplot()+
+      xlab("Gene")+
+      ylab("Normalized Expression")+
+      ggtitle("Expression of 10 highest expressed genes") + 
+      theme_bw() +
+      coord_flip() +
+      theme(axis.text.x = element_text(size=8, angle = 90, hjust = 1),
+            plot.title = element_text(size = 8, face = "bold"))
+}
+
+# Function to plot heatmaps based on pheatmap
+plotHeatmap <- function(geneset,
+                    title="",
+                    keyType = "Ensembl",
+                    show_rownames = FALSE,
+                    cluster_cols = FALSE){
+  if(geneset[1] =="all"){
+    input <- norm_anno
+  }else{
+    if(keyType == "Ensembl"){
+      input <- norm_anno[norm_anno$GENEID %in% geneset,]
+    } else if(keyType == "Symbol"){
+      input <- norm_anno[norm_anno$SYMBOL %in% geneset,]
+    } else{
+      print("Wrong keyType. Choose Ensembl or Symbol!")
+    }
+  }
+  rownames(input) <- paste(input$GENEID, ":", input$SYMBOL, sep="")
+  input <- input[,colnames(input) %in% sample_table$ID]
+  input_scale <- t(scale(t(input)))
+  input_scale <- input_scale[,order(sample_table[[plot_order]], decreasing = FALSE)]
+
+  pheatmap(input_scale,
+         main=title,
+         show_rownames=show_rownames,
+         show_colnames=TRUE,
+         cluster_cols = cluster_cols, 
+         fontsize = 7,
+         annotation_col = plot_annotation,
+         annotation_colors = ann_colors,
+         breaks = scaleColors(data = input_scale, maxvalue = 2)[["breaks"]], 
+         color = scaleColors(data = input_scale, maxvalue = 2)[["color"]])
+}
+
+# Heatmap of genes of specified GO, KEGG or HALLMARK gene sets
+plotGeneSetHeatmap <- function(cat,
+                               term,
+                               organism,
+                               show_rownames =TRUE, 
+                               cluster_cols = FALSE){
+  if(organism == "mouse"){
+    GO <- GO_mm
+    KEGG <- KEGG_mm
+  } else if(organism == "human"){
+    GO <- GO_hs
+    KEGG <- KEGG_hs
+  } else (stop("Wrong organism specified!"))
+  
+  xterm <- paste("^", term, "$", sep="")
+  if(cat=="GO"){
+    genes <- unique(GO[grep(xterm,GO$TERM),"SYMBOL"])
+  }
+  if(cat=="KEGG"){
+    genes <- unique(KEGG[grep(xterm,KEGG$PATHWAY),"SYMBOL"])
+  }
+  if(cat=="HALLMARK"){
+    genes <- unique(hallmark_genes[grep(xterm,hallmark_genes$ont),"gene"])
+    if(organism == "mouse"){
+    genes <- getLDS(attributes = c("entrezgene"), 
+                    filters = "entrezgene", 
+                    values = genes, 
+                    mart = useMart("ensembl", dataset = "hsapiens_gene_ensembl"), 
+                    attributesL = c("mgi_symbol"), 
+                    martL = useMart("ensembl", dataset = "mmusculus_gene_ensembl"), 
+                    uniqueRows=T)[,2]
+    }
+  }
+  plotHeatmap(geneset = genes,
+              keyType = "Symbol",
+              title = paste("Heatmap of present genes annotated to: ",term, sep=""),
+              show_rownames = show_rownames,
+              cluster_cols = cluster_cols)
+}
+
+# Function to plot a PCA
+plotPCA <- function(pca_input = dds_vst,
+                     ntop=500, 
+                     xPC=1, 
+                     yPC=2,
+                     color,
+                     anno_colour,
+                     shape="NULL",
+                     point_size=3,
+                     title="PCA"){
+  
+  if(!is.data.frame(pca_input)){
+  vst_matrix <-as.matrix(assay(pca_input))
+  }else{
+   vst_matrix <- pca_input
+  }
+  
+  if(ntop=="all"){
+    pca <- prcomp(t(vst_matrix)) 
+  }else{
+    # select the ntop genes by variance
+    select <- order(rowVars(vst_matrix), decreasing=TRUE)[c(1:ntop)]
+    pca <- prcomp(t(vst_matrix[select,]))
+  }
+  
+  #calculate explained variance per PC
+  explVar <- pca$sdev^2/sum(pca$sdev^2)
+  # transform variance to percent
+  percentVar <- round(100 * explVar[c(xPC,yPC)], digits=1)
+
+  # Define data for plotting  
+  pcaData <- data.frame(xPC=pca$x[,xPC], 
+                        yPC=pca$x[,yPC], 
+                        color = sample_table[[color]],
+                        name= as.character(sample_table$ID),
+                        stringsAsFactors = F)
+  
+  #plot PCA
+  if(is.factor(pcaData$color) || is.character(pcaData$color)|| is.integer(pcaData$color)){
+    if(shape == "NULL"){
+        pca_plot <- ggplot(pcaData, aes(x = xPC, y = yPC, colour=color)) +
+                          geom_point(size =point_size)
+      }else{
+        pcaData$shape = sample_table[[shape]]
+        pca_plot <- ggplot(pcaData, aes(x = xPC, y = yPC, colour=color, shape=shape)) +
+                          geom_point(size =point_size) +
+                          scale_shape_discrete(name=shape)
+      }
+    
+    if(anno_colour[1] == "NULL"){
+        pca_plot <- pca_plot + scale_color_discrete(name=color)
+    }else{
+        pca_plot <- pca_plot + scale_color_manual(values=anno_colour, name=color)
+    }
+    
+  }else if(is.numeric(pcaData$color)){
+      if(shape == "NULL"){
+        pca_plot <- ggplot(pcaData, aes(x = xPC, y = yPC, colour=color)) +
+          geom_point(size =point_size) +
+          scale_color_gradientn(colours = bluered(100),name=color)
+      }else{
+        pcaData$shape = sample_table[[shape]]
+        pca_plot <- ggplot(pcaData, aes(x = xPC, y = yPC, colour=color, shape=shape)) +
+          geom_point(size =point_size) +
+          scale_color_gradientn(colours = bluered(100),name=color)+
+          scale_shape_discrete(name=shape)
+      }
+  }
+  pca_plot <- pca_plot+
+    xlab(paste0("PC ",xPC, ": ", percentVar[1], "% variance")) +
+    ylab(paste0("PC ",yPC,": ", percentVar[2], "% variance")) +
+    coord_fixed()+
+    theme_classic()+        
+    theme(aspect.ratio = 1)+
+    ggtitle(title)
+  
+  pca_plot
+}
+
+# Function to plot heatmaps of PC loadings
+plotLoadings <- function(PC, ntop){
+  if(ntop=="all"){
+    pca <- prcomp(t(assay(dds_vst))) 
+  }else{
+    select <- order(rowVars(assay(dds_vst)), decreasing=TRUE)[c(1:ntop)]
+    pca <- prcomp(t(assay(dds_vst)[select,]))
+  }
+
+  Loadings <- pca$rotation[,PC]
+  Loadings <- Loadings[order(Loadings, decreasing = T)]
+  Loadings <- names(Loadings[c(1:20,(length(Loadings)-19):length(Loadings))])
+  
+  heatmap <- norm_anno[norm_anno$GENEID %in% Loadings,]
+  rownames(heatmap) <- paste(heatmap$GENEID,": ",heatmap$SYMBOL,sep="")  
+  heatmap <- heatmap[,colnames(heatmap) %in% sample_table$ID]
+  heatmap_scale <- as.matrix(t(scale(t(heatmap))))
+  
+  # Heatmap
+  pheatmap(heatmap_scale,
+           main=paste("Hierarchical Clustering of top20 ",PC, " loadings in both directions",sep=""),
+           show_rownames=TRUE,
+           show_colnames = TRUE,
+           annotation_col = plot_annotation,
+           annotation_colors = ann_colors,
+           breaks = scaleColors(heatmap_scale, 2)[["breaks"]], 
+           color = scaleColors(heatmap_scale, 2)[["color"]],
+           cluster_cols = T,
+           fontsize=6)
+}
+
+# Function for plotting multiple plots in grid
+multiplot<-function(plots=plots,
+                    cols=1){
+
+  layout <- matrix(seq(1, cols * length(plots)/cols),
+                     ncol = cols, 
+                     nrow = length(plots)/cols)
+
+  
+  if (length(plots)==1) {
+    print(plots[[1]])
+  }else{
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+    for (i in 1:length(plots)){
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+
+# Function to plot the normalized or batch-corrected counts for a single gene in a box plot
+plotSingleGene <-function(data=norm_anno, 
+                            symbol, 
+                            condition="Genotype_Age", 
+                            anno_colour=col_genotype_age,
+                            shape = NULL) {
+  
+  input<-as.data.frame(data)
+  rownames(input)<- input$GENEID
+
+  if(sum(input$SYMBOL == symbol) == 0){
+    stop("Gene not present")
+  }else{
+    plots<-list()
+    for (i in 1:sum(input$SYMBOL == symbol)) {
+      geneCounts <- as.data.frame(t(input[input$SYMBOL == symbol, colnames(input) %in% sample_table$ID]))
+      geneCounts$condition <- sample_table[[condition]]
+      GENEID<-colnames(geneCounts)[i]
+      colnames(geneCounts)[i]<-"y"
+      
+      if(!is.null(anno_colour)){
+        if (is.null(shape)){
+          plot<-ggplot(geneCounts, aes(x = condition, y = y, colour=condition)) +
+            scale_color_manual(values=anno_colour)
+        }else{
+          geneCounts$shape <- sample_table[[shape]]
+          legend_shape<-paste0(shape)
+          plot<-ggplot(geneCounts, aes(x = condition, y = y, colour=condition)) +
+            scale_color_manual(values=anno_colour)+
+            geom_beeswarm(cex = 3, na.rm=T, aes(shape=shape)) +
+            scale_shape(name=legend_shape)
+        }
+      }else{
+        if (is.null(shape_opt)){
+          plot<-ggplot(geneCounts, aes(x = condition, y = y, colour=condition)) +
+            scale_color_brewer(palette = "Spectral")
+        }else{
+          geneCounts$shape <- sample_table[[shape]]
+          legend_shape<-paste0(shape)
+          plot<-ggplot(geneCounts, aes(x = condition, y = y, colour=condition)) +
+            scale_color_brewer(palette = "Spectral")+
+            geom_beeswarm(cex = 3, na.rm=T, aes(shape=shape)) +
+            scale_shape(name=legend_shape)
+        }
+      }
+      plots[[i]]<-plot+
+              geom_boxplot(width=.5,alpha=0) + 
+              stat_boxplot(geom ='errorbar',width=.25) +
+              ylab("Normalized counts") +
+              scale_y_continuous(expand=c(0.05,0.25)) +
+              expand_limits(y=0) +
+              labs(title=paste(symbol, GENEID, sep=": "),colour=condition)+
+              theme_classic()+
+              theme(plot.title = element_text(hjust=0.5))
+    }
+    if(sum(input$SYMBOL== symbol)>1){
+      print("Selected gene symbol assigned to more than one gene (Ensembl ID)")
+      multiplot(plots)
+    }else{
+      print("Selected gene symbol assigned to one gene (Ensembl ID)")
+      multiplot(plots)
+    }
+  }
+}
+
+# Function to remove potential batch effects using the removeBatchEffect function from limma
+limmaBatchEffectRemoval <- function(input=dds_vst,
+                                       batchfactor, # name of batch effect column in sample_table
+                                       batchfactor_2=NULL,
+                                       modelfactor){ # name of model effect column in sample_table
+  
+  # rlog-transformed input
+  x <- as.matrix(assay(input)) 
+  
+  # design matrix
+  model <- model.matrix(~sample_table[,c(modelfactor)])
+  
+  # run batch remocal function
+  if(is.numeric(sample_table[,colnames(sample_table) == batchfactor[1]])==T){
+    as.data.frame(removeBatchEffect(x,
+                                    covariates = sample_table[,colnames(sample_table) %in% batchfactor],
+                                    design = model))
+    }else{
+      if(is.null(batchfactor_2)){
+        as.data.frame(removeBatchEffect(x=x,
+                                        batch = sample_table[,colnames(sample_table) == batchfactor],
+                                        design = model))
+      }else{
+        as.data.frame(removeBatchEffect(x=x,
+                                        batch = sample_table[,colnames(sample_table) == batchfactor],
+                                        batch2 = sample_table[,colnames(sample_table) == batchfactor_2],
+                                        design = model))
+      }
+    }
+}
+
 
 # Specify structure of DESeq2_analysis_object
 setClass(Class = "DESeq2_analysis_object",
@@ -213,6 +521,7 @@ DEAnalysis <- function(condition,
                                           "DESCRIPTION",
                                           "CHR")], 
                              by = "GENEID") 
+      row.names(res_deseq_lfc) <- res_deseq_lfc$GENEID
       res_deseq_lfc$comparison<-paste(comparison_table$comparison[i]," vs ",comparison_table$control[i],
                                       sep="")
       # re-order results table      
@@ -231,515 +540,651 @@ DEAnalysis <- function(condition,
     return(results_list)
 }
 
-
-# Function to plot a PCA
-plot_pca <- function(ntop=500, 
-                     xPC=1, 
-                     yPC=2,
-                     color,
-                     anno_colour,
-                     shape="NULL",
-                     point_size=3,
-                     title="PCA"){
-  
-  vst_matrix <-as.matrix(assay(dds_vst))
-  
-  if(ntop=="all"){
-    pca <- prcomp(t(vst_matrix)) 
-  }else{
-    # select the ntop genes by variance
-    select <- order(rowVars(vst_matrix), decreasing=TRUE)[c(1:ntop)]
-    pca <- prcomp(t(vst_matrix[select,]))
+# Function: Union of DEgenes
+uDEG <- function(comparisons){
+  uDEGs <- NULL
+  tmp <- DEresults[names(DEresults) %in% comparisons]
+  for(i in 1:length(comparisons)){
+    DEGs <- as.data.frame(tmp[[i]]@results[tmp[[i]]@results$regulation %in% c("up","down"),])
+    uDEGs <- unique(c(uDEGs, DEGs$GENEID))
   }
-  
-  #calculate explained variance per PC
-  explVar <- pca$sdev^2/sum(pca$sdev^2)
-  # transform variance to percent
-  percentVar <- round(100 * explVar[c(xPC,yPC)], digits=1)
-
-  # Define data for plotting  
-  pcaData <- data.frame(xPC=pca$x[,xPC], 
-                        yPC=pca$x[,yPC], 
-                        color = sample_table[[color]],
-                        name= as.character(sample_table$ID),
-                        stringsAsFactors = F)
-  
-  #plot PCA
-  if(is.factor(pcaData$color) || is.character(pcaData$color)|| is.integer(pcaData$color)){
-    if(shape == "NULL"){
-        pca_plot <- ggplot(pcaData, aes(x = xPC, y = yPC, colour=color)) +
-                          geom_point(size =point_size)
-      }else{
-        pcaData$shape = sample_table[[shape]]
-        pca_plot <- ggplot(pcaData, aes(x = xPC, y = yPC, colour=color, shape=shape)) +
-                          geom_point(size =point_size) +
-                          scale_shape_discrete(name=shape)
-      }
-    
-    if(anno_colour[1] == "NULL"){
-        pca_plot <- pca_plot + scale_color_discrete(name=color)
-    }else{
-        pca_plot <- pca_plot + scale_color_manual(values=anno_colour, name=color)
-    }
-    
-  }else if(is.numeric(pcaData$color)){
-      if(shape == "NULL"){
-        pca_plot <- ggplot(pcaData, aes(x = xPC, y = yPC, colour=color)) +
-          geom_point(size =point_size) +
-          scale_color_gradientn(colours = bluered(100),name=color)
-      }else{
-        pcaData$shape = sample_table[[shape]]
-        pca_plot <- ggplot(pcaData, aes(x = xPC, y = yPC, colour=color, shape=shape)) +
-          geom_point(size =point_size) +
-          scale_color_gradientn(colours = bluered(100),name=color)+
-          scale_shape_discrete(name=shape)
-      }
-  }
-  pca_plot <- pca_plot+
-    xlab(paste0("PC ",xPC, ": ", percentVar[1], "% variance")) +
-    ylab(paste0("PC ",yPC,": ", percentVar[2], "% variance")) +
-    coord_fixed()+
-    theme_classic()+        
-    theme(aspect.ratio = 1)+
-    ggtitle(title)
-  
-  pca_plot
+  uDEGs
 }
 
-plotLoadings <- function(PC, ntop){
-  if(ntop=="all"){
-    pca <- prcomp(t(assay(dds_vst))) 
-  }else{
-    select <- order(rowVars(assay(dds_vst)), decreasing=TRUE)[c(1:ntop)]
-    pca <- prcomp(t(assay(dds_vst)[select,]))
-  }
-
-  Loadings <- pca$rotation[,PC]
-  Loadings <- Loadings[order(Loadings, decreasing = T)]
-  Loadings <- names(Loadings[c(1:20,(length(Loadings)-19):length(Loadings))])
-  
-  heatmap <- norm_anno[norm_anno$GENEID %in% Loadings,]
-  rownames(heatmap) <- paste(heatmap$GENEID,": ",heatmap$SYMBOL,sep="")  
-  heatmap <- heatmap[,colnames(heatmap) %in% sample_table$ID]
-  heatmap_scale <- as.matrix(t(scale(t(heatmap))))
-  
-  # Heatmap
-  pheatmap(heatmap_scale,
-           main=paste("Hierarchical Clustering of top20 ",PC, " loadings in both directions",sep=""),
-           show_rownames=TRUE,
-           show_colnames = TRUE,
-           annotation_col = plot_annotation,
-           annotation_colors = ann_colors,
-           breaks = scaleColors(heatmap_scale, 2)[["breaks"]], 
-           color = scaleColors(heatmap_scale, 2)[["color"]],
-           cluster_cols = T,
-           fontsize=6)
-}
-```
-
-
-## Functions  to work on
-```{r}
-# Function to remove potential batch effects using limma
-removeBatchEffect_function <- function(x=rld_df,
-                                       batch = sample_table[c("Mouse_ID")],
-                                       batch_2=NULL,
-                                       model = model.matrix(~sample_table$merged)){
-  if(is.numeric(batch[,1])==T){
-    as.data.frame(removeBatchEffect(x=as.matrix(x),
-                      covariates = batch,
-                      design = model))}
-  else{
-    if(is.null(batch_2)){
-      as.data.frame(removeBatchEffect(x=x,
-                      batch = batch[,1],
-                      design = model))
+# Function: Venn Diagram
+plotVenn <- function(comparisons,
+                     regulation=NULL){
+  venn <- NULL
+  for(i in 1:length(comparisons)){
+    res <- DEresults[names(DEresults) %in% comparisons]
+    comp <- as.data.frame(res[[i]]@results)
+    if(is.null(regulation)){
+      DE <- ifelse(comp$regulation %in% c("up","down"), 1, 0)
+      venn <- cbind(venn, DE)
+      colnames(venn)[i]<- paste(names(res)[[i]], "up&down", sep=": ")
+    } else {
+      DE <- ifelse(comp$regulation == regulation, 1, 0)
+      venn <- cbind(venn, DE)
+      colnames(venn)[i]<- paste(names(res)[[i]], regulation, sep=": ")
     }
-    else{
-      as.data.frame(removeBatchEffect(x=x,
-                      batch = batch,
-                      batch2 = batch_2,
-                      design = model))
-    }
+
   }
+  vennDiagram(venn,cex = 1, counts.col = "blue")
 }
 
-# Function to plot PCA after limma batch removal
-Limma_batch <- function(model=model.matrix(~sample_table$condition),
-                        batch=sample_table$Sex, # Does it make sense to have Sex as a default? Do we need a default?
-                        batch_2=NULL,
-                        shape_opt="Sex",
-                        ntop=500, PC_1=1, PC_2=2,
-                        color_obj="Treatment",
-                        anno_colour=anno_merged,
-                        continuous=F,
-                        colour_gradient=bluered(100),
-                        point_size=3,
-                        title="PcA of batch_corrected counts"){
-  removedbatch_rld <- removeBatchEffect_function(x=as.data.frame(assay(dds_vst)),
-                                                 batch =batch,
-                                                 batch_2=batch_2,
-                                                 model =model.matrix(~sample_table$condition))
-  dds_vst_f_df<-as.matrix(assay(dds_vst))
-  if(ntop=="all"){
-    pca <- prcomp(t(removedbatch_rld)) 
+# Ratio plot function
+plotRatios <- function(comp1, comp2){
+  U <- NULL
+  c <- c(comp1,comp2)
+  U <- uDEG(c)
+  Ratio <- NULL
+  for(i in 1:length(c)){
+    tmp <- DEresults[names(DEresults) %in% c]
+    comp <- as.data.frame(tmp[[i]]@results)
+    DE <- as.data.frame(comp[rownames(comp) %in% U,])
+    Ratio <- as.data.frame(cbind(Ratio,DE$log2FoldChange))
   }
-  else{
-    # select the ntop genes by variance
-    rv <- rowVars(dds_vst_f_df)
-    
-    select <- order(rv, decreasing=TRUE)[seq_len(min(ntop, length(rv)))]
-    
-    pca <- prcomp(t(removedbatch_rld[select,]))
-  }
-  
-  
-  percentVar <- pca$sdev^2 / sum( pca$sdev^2 )
-  
-  color_title<-paste0(color_obj)
-  
-  color_obj.df <- as.data.frame(color_obj)
-  group <- color_obj
-  pcaData <- data.frame(PC1=pca$x[,PC_1], PC2=pca$x[,PC_2], group=group, color_obj.df, name=colnames(dds))
-  colnames(pcaData)[1] <- paste("PC_1")
-  colnames(pcaData)[2] <- paste("PC_2")
-  attr(pcaData, "percentVar") <- percentVar[c(PC_1,PC_2)]
-  pcaData$condition <- pcaData[,4]
-  
-  # transform variance to percent
-  percentVar <- round(100 * attr(pcaData, "percentVar"))
-  
-  #plot PCA
-  if(continuous ==F){
-    if(is.null(anno_colour)){
-      
-      if(shape_opt=="NULL"){
-        pca_plot <- ggplot(pcaData, aes(x = PC_1, y = PC_2,colour=condition)) +
-          geom_point(size =point_size) +
-          scale_color_discrete(name=color_title)+
-          xlab(paste0("PC ",PC_1, ": ", percentVar[1], "% variance")) +
-          ylab(paste0("PC ",PC_2,": ", percentVar[2], "% variance")) +
-          coord_fixed()+
-          theme_classic()+        
-            theme(aspect.ratio = 1)
-      }
-      else{
-        if (length(levels(sample_table[[paste0(shape_opt)]]))<6){
-          pcaData["new"]<- as.character(sample_table[[paste0(shape_opt)]])
-          legend_title <- paste0(shape_opt)
-          pca_plot <- ggplot(pcaData, aes(x = PC_1, y = PC_2,colour=condition, shape=new)) +
-            geom_point(size =point_size) +
-            scale_color_discrete(name=color_title)+
-            scale_shape(name=legend_title)+
-            xlab(paste0("PC ",PC_1, ": ", percentVar[1], "% variance")) +
-            ylab(paste0("PC ",PC_2,": ", percentVar[2], "% variance")) +
-            coord_fixed()+
-            theme_classic()+           
-            theme(aspect.ratio = 1)
-        }
-        else{
-          pcaData["new"]<- as.character(sample_table[[paste0(shape_opt)]])
-          legend_title <- paste0(shape_opt)
-          pca_plot <- ggplot(pcaData, aes(x = PC_1, y = PC_2,colour=condition, shape=new)) +
-            geom_point(size =point_size) +
-            scale_color_discrete(name=color_title)+
-            scale_shape_manual(values=df$x,name=legend_title)+
-            xlab(paste0("PC ",PC_1, ": ", percentVar[1], "% variance")) +
-            ylab(paste0("PC ",PC_2,": ", percentVar[2], "% variance")) +
-            coord_fixed()+
- 
-            theme_classic()+           
-            theme(aspect.ratio = 1)
-          
-        }}
-    }
-    else{
-      if(shape_opt=="NULL"){
-        pca_plot <- ggplot(pcaData, aes(x = PC_1, y = PC_2,colour=condition)) +
-          geom_point(size =point_size) +
-          scale_color_manual(values=anno_colour, name=color_title)+
-          xlab(paste0("PC ",PC_1, ": ", percentVar[1], "% variance")) +
-          ylab(paste0("PC ",PC_2,": ", percentVar[2], "% variance")) +
-          coord_fixed()+
-          
-          theme_classic()+           
-          theme(aspect.ratio = 1)
-      }
-      else{
-        if (length(levels(sample_table[[paste0(shape_opt)]]))<6){
-          pcaData["new"]<- as.character(sample_table[[paste0(shape_opt)]])
-          legend_title <- paste0(shape_opt)
-          pca_plot <- ggplot(pcaData, aes(x = PC_1, y = PC_2,colour=condition, shape=new)) +
-            geom_point(size =point_size) +
-            scale_color_manual(values=anno_colour, name=color_title)+
-            scale_shape(name=legend_title)+
-            xlab(paste0("PC ",PC_1, ": ", percentVar[1], "% variance")) +
-            ylab(paste0("PC ",PC_2,": ", percentVar[2], "% variance")) +
-            coord_fixed()+
- 
-            theme_classic()+           
-            theme(aspect.ratio = 1)
-        }
-        else{
-          pcaData["new"]<- as.character(sample_table[[paste0(shape_opt)]])
-          legend_title <- paste0(shape_opt)
-          pca_plot <- ggplot(pcaData, aes(x = PC_1, y = PC_2,colour=condition, shape=new)) +
-            geom_point(size =point_size) +
-            scale_color_manual(values=anno_colour, name=color_title)+
-            scale_shape_manual(values=df$x,name=legend_title)+
-            xlab(paste0("PC ",PC_1, ": ", percentVar[1], "% variance")) +
-            ylab(paste0("PC ",PC_2,": ", percentVar[2], "% variance")) +
-            coord_fixed()+
- 
-            theme_classic()+           
-            theme(aspect.ratio = 1)
-          
-        }}
-    }
-  }
-  if(continuous==T){
-    if(shape_opt=="NULL"){
-      color_obj<-as.integer(sample_table[[paste0(color_obj)]])
-      pca_plot <- ggplot(pcaData, aes(x = PC_1, y = PC_2,colour=color_obj)) +
-        geom_point(size =point_size) +
-        scale_color_gradientn(colours = colour_gradient,name=color_title)+
-        xlab(paste0("PC ",PC_1, ": ", percentVar[1], "% variance")) +
-        ylab(paste0("PC ",PC_2,": ", percentVar[2], "% variance")) +
-        coord_fixed()+
-        
-        theme_classic()+           
-        theme(aspect.ratio = 1)
-    }
-    else{
-      if (length(levels(sample_table[[paste0(shape_opt)]]))<6){
-        color_obj<-as.integer(sample_table[[paste0(color_obj)]])
-        pcaData["new"]<- as.character(sample_table[[paste0(shape_opt)]])
-        legend_title <- paste0(shape_opt)
-        pca_plot <- ggplot(pcaData, aes(x = PC_1, y = PC_2,colour=color_obj, shape=new)) +
-          geom_point(size =point_size) +
-          scale_color_gradientn(colours = colour_gradient,name=color_title)+
-          scale_shape(name=legend_title)+
-          xlab(paste0("PC ",PC_1, ": ", percentVar[1], "% variance")) +
-          ylab(paste0("PC ",PC_2,": ", percentVar[2], "% variance")) +
-          coord_fixed()+
-          
-          theme_classic()+           
-          theme(aspect.ratio = 1)
-      }
-      else{
-        color_obj<-as.integer(sample_table[[paste0(color_obj)]])
-        pcaData["new"]<- as.character(sample_table[[paste0(shape_opt)]])
-        legend_title <- paste0(shape_opt)
-        pca_plot <- ggplot(pcaData, aes(x = PC_1, y = PC_2,colour=color_obj, shape=new)) +
-          geom_point(size =point_size) +
-          scale_color_gradientn(colours = colour_gradient,name=color_title)+
-          scale_shape_manual(values=df$x,name=legend_title)+
-          xlab(paste0("PC ",PC_1, ": ", percentVar[1], "% variance")) +
-          ylab(paste0("PC ",PC_2,": ", percentVar[2], "% variance")) +
-          coord_fixed()+
-          
-          theme_classic()+           
-          theme(aspect.ratio = 1)
-        
-      }}
-  }
-  pca_plot+
-    ggtitle(title)
+  colnames(Ratio)<- c
+  rownames(Ratio) <- U
+  ggplot(Ratio, aes(x=Ratio[,1], y=Ratio[,2])) +
+    geom_point(colour = "grey", size = 1.5) + 
+    theme_bw() +
+    xlab(comp1)+
+    ylab(comp2) +
+    geom_abline(slope = c(-1,1),intercept = 0, colour="grey") +
+    geom_hline(yintercept = c(0,log(2,2),-(log(2,2))))+
+    geom_hline(yintercept = c(log(2,2),-(log(2,2))), colour="firebrick1")+
+    geom_vline(xintercept = c(log(2,2),-(log(2,2))))+
+    geom_vline(xintercept = c(log(2,2),-(log(2,2))), colour="firebrick1")+
+    theme(text = element_text(size=10))+
+    ggtitle(paste(comp1," vs ",comp2,": ",length(U)," DE genes",sep=""))
 }
 
-
-# Is the multiplot function necessary?
-# Function for plotting multiple plots in grid
-multiplot<-function(..., plotlist=NULL, file, cols=1, layout=NULL) {
-  library(grid)
+# GO & KEGG enrichment across comparisons
+compareGSEA <- function(comparisons, 
+                        organism, 
+                        GeneSets =c("GO","KEGG"),
+                        ontology= "BP",
+                        pCorrection = "bonferroni", # choose the p-value adjustment method
+                        pvalueCutoff = 0.05, # set the unadj. or adj. p-value cutoff (depending on correction method)
+                        qvalueCutoff = 0.05, # set the q-value cutoff (FDR corrected)
+                        showMax = 20){
   
-  # Make a list from the ... arguments and plotlist
-  plots <- c(list(...), plotlist)
+  if(organism == "mouse") {
+    OrgDb = org.Mm.eg.db
+  } else if(organism == "human"){
+      OrgDb = org.Hs.eg.db
+    } else {stop("Wrong Organism. Select mouse or human.")}
   
-  numPlots = length(plots)
-  
-  # If layout is NULL, then use 'cols' to determine layout
-  if (is.null(layout)) {
-    # Make the panel
-    # ncol: Number of columns of plots
-    # nrow: Number of rows needed, calculated from # of cols
-    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
-                     ncol = cols, nrow = ceiling(numPlots/cols))
+  ENTREZlist <-  list()
+  for(i in 1:length(comparisons)){
+    res <- DEresults[names(DEresults) %in% comparisons]
+    DE_up <- as.data.frame(res[[i]]@DE_genes$up_regulated_Genes)$SYMBOL
+    entrez_up <- bitr(DE_up, fromType = "SYMBOL", toType="ENTREZID", OrgDb=OrgDb)$ENTREZID
+    DE_down <- as.data.frame(res[[i]]@DE_genes$down_regulated_Genes)$SYMBOL
+    entrez_down <- bitr(DE_down, fromType = "SYMBOL", toType="ENTREZID", OrgDb=OrgDb)$ENTREZID  
+    x <- setNames(list(entrez_up, entrez_down),
+                  c(paste(names(res[i]),"_up",sep=""), 
+                    paste(names(res[i]),"_down",sep="")))
+    ENTREZlist <- c(ENTREZlist,x)
   }
   
-  if (numPlots==1) {
-    print(plots[[1]])
+  list <- list()
+  
+  # Compare the Clusters regarding their GO enrichment  
+  if("GO" %in% GeneSets){
+    print("Performing GO enrichment")
+    CompareClusters_GO <- compareCluster(geneCluster = ENTREZlist, 
+                                       fun = "enrichGO",  
+                                       universe = universe_Entrez,
+                                       OrgDb = OrgDb,
+                                       ont = ontology, 
+                                       pvalueCutoff  = pvalueCutoff, 
+                                       pAdjustMethod = pCorrection, 
+                                       qvalueCutoff  = pvalueCutoff,  
+                                       readable      = T)
+    list$GOresults <- as.data.frame(CompareClusters_GO)
+    list$GOplot <- clusterProfiler::dotplot(CompareClusters_GO, showCategory = showMax, by = "geneRatio", font.size=10)
+  }
+  
+  if("KEGG" %in% GeneSets){
+    print("Performing KEGG enrichment")
     
+    if(organism == "mouse"){org = "mmu"} 
+    if(organism == "human"){org = "hsa"}
+    
+    # Compare the Clusters regarding their KEGG enrichment  
+    CompareClusters_KEGG <- compareCluster(geneCluster = ENTREZlist, 
+                                         fun = "enrichKEGG",  
+                                         universe = universe_Entrez,
+                                         organism = org, 
+                                         pvalueCutoff  = pvalueCutoff, 
+                                         pAdjustMethod = pCorrection, 
+                                         qvalueCutoff  = pvalueCutoff)
+    list$KEGGresults <- as.data.frame(CompareClusters_KEGG)
+    list$KEGGplot <- clusterProfiler::dotplot(CompareClusters_KEGG, showCategory = showMax, by = "geneRatio", font.size=10)
+  }
+  list
+}
+
+# Custom function to plot baseMean versus fold change
+plotMA <- function(comparison, 
+                   ylim=c(-2,2),  
+                   padjThreshold=0.05,
+                   xlab = "mean of normalized counts", 
+                   ylab = expression(log[2]~fold~change),
+                   log = "x", 
+                   cex=0.45){
+  x <- as.data.frame(DEresults[[comparison]]@results)
+  if (!(is.data.frame(x) && all(c("baseMean", "log2FoldChange") %in% colnames(x)))){
+    stop("'x' must be a data frame with columns named 'baseMean', 'log2FoldChange'.")
+  }
+  col = ifelse(x$padj>=padjThreshold, "gray32", "red3")
+  py = x$log2FoldChange
+  if(missing(ylim)){
+      ylim = c(-1,1) * quantile(abs(py[is.finite(py)]), probs=0.99) * 1.1
+  }
+  plot(x=x$baseMean, 
+       y=pmax(ylim[1], pmin(ylim[2], py)),
+       log=log, 
+       pch=ifelse(py<ylim[1], 6, ifelse(py>ylim[2], 2, 16)),
+       cex=cex, 
+       col=col, 
+       xlab=xlab, 
+       ylab=ylab, 
+       ylim=ylim,
+       main=comparison)
+  abline(h=0, lwd=4, col="#ff000080")
+  abline(h=c(-1,1), lwd=2, col="dodgerblue")
+}
+
+# Plot p value distribution  
+plotPvalues <- function(comparison){
+  res <- as.data.frame(DEresults[[comparison]]@results)
+  ggplot(na.omit(res), aes(x=pvalue)) + 
+      geom_histogram(aes(y=..count..),               
+      binwidth = 0.01) +
+      theme_bw()+
+      ggtitle(paste("p value histogram of: ",comparison,sep=""))
+}
+
+# Function to plot heatmaps of DE genes based on pheatmap
+plotDEHeatmap <- function(comparison,
+                          factor,
+                          conditions="all",
+                          show_rownames = FALSE,
+                          cluster_cols = FALSE){
+
+  geneset <- DEresults[[comparison]]@results[DEresults[[comparison]]@results$regulation %in% c("up","down"),"GENEID"]
+    
+  input <- norm_anno[norm_anno$GENEID %in% geneset,]
+  rownames(input) <- paste(input$GENEID, ":", input$SYMBOL, sep="")
+  
+  if(conditions[1] == "all"){
+    input <- input[,colnames(input) %in% sample_table$ID]
+    input_scale <- t(scale(t(input)))
+    input_scale <- input_scale[,order(sample_table[[plot_order]], decreasing = FALSE)]
   } else {
-    # Set up the page
-    grid.newpage()
-    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
-    
-    # Print each plot, in the correct location
-    for (i in 1:numPlots) {
-      # Get the i,j matrix positions of the regions that contain this subplot
-      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
-      
-      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
-                                      layout.pos.col = matchidx$col))
-    }
+    input <- input[,colnames(input) %in% sample_table[as.vector(sample_table[[factor]]) %in% conditions,]$ID,]
+    input_scale <- t(scale(t(input)))
   }
+  
+  pheatmap(input_scale,
+         main=paste("Heatmap of significant DE genes in: ",comparison,sep=""),
+         show_rownames=show_rownames,
+         show_colnames=TRUE,
+         cluster_cols = cluster_cols, 
+         fontsize = 7,
+         annotation_col = plot_annotation,
+         annotation_colors = ann_colors,
+         breaks = scaleColors(data = input_scale, maxvalue = 2)[["breaks"]], 
+         color = scaleColors(data = input_scale, maxvalue = 2)[["color"]])
 }
 
+# Volcano Plot function
+plotVolcano <-  function(comparison,
+                         labelnum=20){
+    
+    # specify labeling    
+    upDE <-  as.data.frame(DEresults[[comparison]]@results[DEresults[[comparison]]@results$regulation =="up",]) 
+    FClabel_up <- upDE[order(abs(upDE$log2FoldChange), decreasing = TRUE),]
+    if(nrow(FClabel_up)>labelnum){
+      FClabel_up <- as.character(FClabel_up[c(1:labelnum),"GENEID"])
+    } else {
+        FClabel_up <- as.character(FClabel$GENEID)}
+    plabel_up <- upDE[order(upDE$padj, decreasing = FALSE),]
+    if(nrow(plabel_up)>labelnum){
+      plabel_up <- as.character(plabel_up[c(1:labelnum),"GENEID"])
+    } else {
+        plabel_up <- as.character(plabel_up$GENEID)}
+    
+    downDE <-  as.data.frame(DEresults[[comparison]]@results[DEresults[[comparison]]@results$regulation =="down",]) 
+    FClabel_down <- downDE[order(abs(downDE$log2FoldChange), decreasing = TRUE),]
+    if(nrow(FClabel_down)>labelnum){
+      FClabel_down <- as.character(FClabel_down[c(1:labelnum),"GENEID"])
+    } else {
+        FClabel_down <- as.character(FClabel_down$GENEID)}
+    plabel_down <- downDE[order(downDE$padj, decreasing = FALSE),]
+    if(nrow(plabel_down)>labelnum){
+      plabel_down <- as.character(plabel_down[c(1:labelnum),"GENEID"])
+    } else {
+        plabel_down <- as.character(plabel_down$GENEID)}
+    
+    
+    label<- unique(c(FClabel_up, plabel_up, FClabel_down, plabel_down))
+    
+    data <- DEresults[[comparison]]@results
+    data$label<- ifelse(data$GENEID %in% label == "TRUE",as.character(data$SYMBOL), "")
+    
+    # Volcano Plot
+    ggplot(data=na.omit(data), aes(x=log2FoldChange, y=-log10(padj), colour=regulation)) +
+      geom_point(alpha=0.4, size=1.75) +
+      scale_color_manual(values=c("cornflowerblue","grey", "firebrick"))+
+      scale_x_continuous() +
+      scale_y_continuous() +
+      xlab("log2(FoldChange)") +
+      ylab("-log10(padj)") +
+      geom_vline(xintercept = 0, colour="black")+
+      geom_vline(xintercept = c(-log(2,2),log(2,2)), colour="red")+
+      geom_hline(yintercept=-log(0.05,10),colour="red")+
+      geom_text_repel(data=na.omit(data[!data$label =="",]),aes(label=label), size=3)+
+      guides(colour=FALSE) + 
+      ggtitle(paste("Volcano Plot of: ",comparison,sep="")) +
+      theme_bw()
+}
 
-# Function to plot the normalized or batch-corrected counts for a single gene in a box plot
-plot_single_gene <-function(input=norm_anno, 
-                            gene_symbol="Crybg3", 
-                            condition="Genotype_Age", 
-                            anno_colour=Genotype_Age,
-                            shape_opt="age") {
-  input<-as.data.frame(input)
-  if(sum(input$SYMBOL==gene_symbol)>1){
-    print("More than one gene symbols assigned to this Ensembl ID")
+# GSEA function
+GSEA <-  function(comparison,
+                  organism,
+                  GeneSets =c("GO","KEGG","Hallmark","cannonicalPathways","Motifs","ImmunoSignatures"),
+                  GOntology = "BP",
+                  pCorrection = "bonferroni", # choose the p-value adjustment method
+                  pvalueCutoff = 0.05, # set the unadj. or adj. p-value cutoff (depending on correction method)
+                  qvalueCutoff = 0.05, # set the q-value cutoff (FDR corrected)
+                  showMax = 20,
+                  font.size = 8){
   
-  plots<-list()
+  results <- list()
+  
+  if(organism == "mouse") {
+    OrgDb = org.Mm.eg.db
+  } else if(organism == "human"){
+      OrgDb = org.Hs.eg.db
+    } else {print("Wrong Organism. Select mouse or human.")}
+  
+  res <- DEresults[[comparison]]
+  DE_up <- as.data.frame(res@DE_genes$up_regulated_Genes)$SYMBOL
+  entrez_up <- bitr(DE_up, fromType = "SYMBOL", toType="ENTREZID", OrgDb=OrgDb)$ENTREZID
+  DE_down <- as.data.frame(res@DE_genes$down_regulated_Genes)$SYMBOL
+  entrez_down <- bitr(DE_down, fromType = "SYMBOL", toType="ENTREZID", OrgDb=OrgDb)$ENTREZID  
 
-  for (i in 1:sum(input$SYMBOL==gene_symbol)) {
-    geneCounts_lfc <- as.data.frame(t(input[input[["SYMBOL"]]==gene_symbol,][ , colnames(input) %in% sample_table$ID]))
-    geneCounts_lfc$condition <- sample_table[[condition]]
-    title<-colnames(geneCounts_lfc)[i]
-    colnames(geneCounts_lfc)[i]<-"y"
-  if(is.null(anno_colour)==F){
-    if (is.null(shape_opt)==T){
-      plot<-ggplot(geneCounts_lfc, aes(x = condition, y = y, colour=condition)) +
-        scale_y_continuous(expand=c(0.05,0.25)) +  
-        scale_color_manual(values=anno_colour)+
-        geom_beeswarm(cex = 3, na.rm=T)+
-        ylab("Normalized counts")+
-        labs(title=paste(gene_symbol, title,sep=": "),colour=condition)+
-        theme_classic()+
-        theme(plot.title = element_text(hjust=0.5))+
-        expand_limits(y=0)+
-        stat_boxplot(geom ='errorbar',width=.25)+
-        geom_boxplot(width=.5,alpha=0)}
-    else{
-      geneCounts_lfc$sign <- sample_table[[paste0(shape_opt)]]
-      legend_shape<-paste0(shape_opt)
-      plot<-ggplot(geneCounts_lfc, aes(x = condition, y = y, colour=condition, shape=sign)) +
-        scale_y_continuous(expand=c(0.05,0.25)) +   
-        scale_color_manual(values=anno_colour)+
-        scale_shape(name=legend_shape)+
-        geom_beeswarm(cex = 3, na.rm=T)+
-        ylab("Normalized counts")+
-        labs(title=paste(gene_symbol, title,sep=": "),colour=condition)+
-        theme_classic()+
-        theme(plot.title = element_text(hjust=0.5))+
-        expand_limits(y=0)+
-        stat_boxplot(geom ='errorbar',width=.25)+
-        geom_boxplot(width=.5,alpha=0)}}
-  else{
-    if (is.null(shape_opt)==T){
-      plot<-ggplot(geneCounts_lfc, aes(x = condition, y = y, colour=condition)) +
-        scale_y_continuous(expand=c(0.05,0.25)) +  
-        scale_color_brewer(palette = "Spectral")+
-        geom_beeswarm(cex = 3, na.rm=T)+
-        ylab("Normalized counts")+
-        labs(title=paste(gene_symbol, title,sep=": "),colour=condition)+
-        theme_classic()+
-        theme(plot.title = element_text(hjust=0.5))+
-        expand_limits(y=0)+
-        stat_boxplot(geom ='errorbar',width=.25)+
-        geom_boxplot(width=.5,alpha=0)}
-    else{
-      geneCounts_lfc$sign <- sample_table[[paste0(shape_opt)]]
-      legend_shape<-paste0(shape_opt)
-      plot<-ggplot(geneCounts_lfc, aes(x = condition, y = y, colour=condition, shape=sign)) +
-        scale_y_continuous(expand=c(0.05,0.25)) +  
-        scale_color_brewer(palette = "Spectral")+
-        scale_shape(name=legend_shape)+
-        geom_beeswarm(cex = 3, na.rm=T)+
-        ylab("Normalized counts")+
-        labs(title=paste(gene_symbol, title,sep=": "),colour=condition)+
-        theme_classic()+
-        theme(plot.title = element_text(hjust=0.5))+
-        expand_limits(y=0)+
-        stat_boxplot(geom ='errorbar',width=.25)+
-        geom_boxplot(width=.5,alpha=0)
+  # GO enrichment
+  if("GO" %in% GeneSets){
+    print("Performing GO enrichment")
+    if(length(entrez_up)<20){
+      print("Too few upregulated genes for GO enrichment (<20)")
+      results$GO_up <- "Too few upregulated genes for GO enrichment (<20)"
+    }else{
+      eGO_up <- enrichGO(gene = entrez_up,
+                         universe = universe_Entrez,
+                         OrgDb = OrgDb,
+                         ont = GOntology,
+                         pAdjustMethod = pCorrection,
+                         pvalueCutoff  = pvalueCutoff,
+                         qvalueCutoff  = qvalueCutoff,
+                         readable      = T)
+    
+      results$GOup <- as.data.frame(eGO_up)
+      if(nrow(results$GOup)<1){
+        results$GOup_plot <- "No GO enrichment for upregulated genes"
+      }else{
+        results$GOup_plot <- clusterProfiler::dotplot(eGO_up, 
+                                                      showCategory = showMax, 
+                                                      font.size= font.size, 
+                                                      title = paste("GO enrichment for genes upregulated in: ", comparison,sep="")
+                                                      )
+      }
+    }
+    if(length(entrez_down)<20){
+      print("Too few downregulated genes for GO enrichment (<20)")
+      results$GO_down <- "Too few downregulated genes for GO enrichment (<20)"
+    }else{
+      eGO_down <- enrichGO(gene = entrez_down,
+                         universe = universe_Entrez,
+                         OrgDb = OrgDb,
+                         ont = GOntology,
+                         pAdjustMethod = pCorrection,
+                         pvalueCutoff  = pvalueCutoff,
+                         qvalueCutoff  = qvalueCutoff,
+                         readable      = T)
+    
+      results$GOdown <- as.data.frame(eGO_down)
+      if(nrow(results$GOdown)<1){
+        results$GOdown_plot <- "No GO enrichment for downregulated genes"
+      }else{
+        results$GOdown_plot <- clusterProfiler::dotplot(eGO_down, 
+                                                        showCategory = showMax, 
+                                                        font.size= font.size, 
+                                                        title = paste("GO enrichment for genes downregulated in: ", comparison,sep="")
+                                                        )
+      }
     }
   }
-  plots[[i]]<-plot
-  }
-  multiplot(plots)
-  }
-  else{
-  geneCounts_lfc <- as.data.frame(t(input[input[["SYMBOL"]]==gene_symbol,][ , colnames(input) %in% sample_table$ID]))
   
-  geneCounts_lfc$condition <- sample_table[[condition]]
-  colnames(geneCounts_lfc)<-c("count","condition")
-  if(is.null(anno_colour)==F){
-    if (is.null(shape_opt)==T){
-      ggplot(geneCounts_lfc, aes(x = condition, y = count, colour=condition)) +
-        scale_y_continuous(expand=c(0.05,0.25)) +  
-        scale_color_manual(values=anno_colour)+
-        geom_beeswarm(cex = 3, na.rm=T)+
-        ylab("Normalized counts")+
-        labs(title=paste0(gene_symbol),colour=condition)+
-        theme_classic()+
-        theme(plot.title = element_text(hjust=0.5))+
-        expand_limits(y=0)+
-        stat_boxplot(geom ='errorbar',width=.25)+
-        geom_boxplot(width=.5,alpha=0)}
-    else{
-      geneCounts_lfc$sign <- sample_table[[paste0(shape_opt)]]
-      legend_shape<-paste0(shape_opt)
-      ggplot(geneCounts_lfc, aes(x = condition, y = count, colour=condition, shape=sign)) +
-        scale_y_continuous(expand=c(0.05,0.25)) +   
-        scale_color_manual(values=anno_colour)+
-        scale_shape(name=legend_shape)+
-        geom_beeswarm(cex = 3, na.rm=T)+
-        ylab("Normalized counts")+
-        labs(title=paste0(gene_symbol),colour=condition)+
-        theme_classic()+
-        theme(plot.title = element_text(hjust=0.5))+
-        expand_limits(y=0)+
-        stat_boxplot(geom ='errorbar',width=.25)+
-        geom_boxplot(width=.5,alpha=0)}}
-  else{
-    if (is.null(shape_opt)==T){
-      ggplot(geneCounts_lfc, aes(x = condition, y = count, colour=condition)) +
-        scale_y_continuous(expand=c(0.05,0.25)) +  
-        scale_color_brewer(palette = "Spectral")+
-        geom_beeswarm(cex = 3, na.rm=T)+
-        ylab("Normalized counts")+
-        labs(title=paste0(gene_symbol),colour=condition)+
-        theme_classic()+
-        theme(plot.title = element_text(hjust=0.5))+
-        expand_limits(y=0)+
-        stat_boxplot(geom ='errorbar',width=.25)+
-        geom_boxplot(width=.5,alpha=0)}
-    else{
-      geneCounts_lfc$sign <- sample_table[[paste0(shape_opt)]]
-      legend_shape<-paste0(shape_opt)
-      ggplot(geneCounts_lfc, aes(x = condition, y = count, colour=condition, shape=sign)) +
-        scale_y_continuous(expand=c(0.05,0.25)) +  
-        scale_color_brewer(palette = "Spectral")+
-        scale_shape(name=legend_shape)+
-        geom_beeswarm(cex = 3, na.rm=T)+
-        ylab("Normalized counts")+
-        labs(title=paste0(gene_symbol),colour=condition)+
-        theme_classic()+
-        theme(plot.title = element_text(hjust=0.5))+
-        expand_limits(y=0)+
-        stat_boxplot(geom ='errorbar',width=.25)+
-        geom_boxplot(width=.5,alpha=0)
+  # KEGG enrichment
+  if("KEGG" %in% GeneSets){
+    print("Performing KEGG enrichment")
+    
+    if(organism == "mouse") {org = "mmu"} 
+    if(organism == "human"){org = "hsa"}
+    
+    if(length(entrez_up)<20){
+      print("Too few upregulated genes for KEGG enrichment (<20)")
+      results$KEGG_up <- "Too few upregulated genes for KEGG enrichment (<20)"
+    }else{
+      eKEGG_up <- enrichKEGG(gene = entrez_up, 
+                       organism = org,
+                       universe = universe_Entrez, 
+                       pAdjustMethod = pCorrection,
+                       pvalueCutoff  = pvalueCutoff,
+                       qvalueCutoff = qvalueCutoff)
+    
+      results$KEGGup <- as.data.frame(eKEGG_up)
+      if(nrow(results$KEGGup)<1){
+        results$KEGGup_plot <- "No KEGG enrichment for upregulated genes"
+      }else{
+        results$KEGGup_plot <- clusterProfiler::dotplot(eKEGG_up,  
+                                                        showCategory = showMax, 
+                                                        font.size= font.size, 
+                                                      title = paste("KEGG enrichment for genes upregulated in: ",comparison,sep="")
+                                                      )
+      }
+    }
+    if(length(entrez_down)<20){
+      print("Too few downregulated genes for KEGG enrichment (<20)")
+      results$KEGG_down <- "Too few downregulated genes for KEGG enrichment (<20)"
+    } else{
+      eKEGG_down <- enrichKEGG(gene = entrez_down, 
+                       organism = org,
+                       universe = universe_Entrez, 
+                       pAdjustMethod = pCorrection,
+                       pvalueCutoff  = pvalueCutoff,
+                       qvalueCutoff = qvalueCutoff)
+    
+      results$KEGGdown <- as.data.frame(eKEGG_down)
+      if(nrow(results$KEGGdown)<1){
+        results$KEGGdown_plot <- "No KEGG enrichment for downregulated genes"
+      }else{
+        results$KEGGdown_plot <- clusterProfiler::dotplot(eKEGG_down,
+                                                          showCategory = showMax,
+                                                          font.size= font.size,
+                                                          title = paste("KEGG enrichment for genes upregulated in: ",comparison,sep="")
+                                                          )
+      }
     }
   }
+  
+  if("Hallmark" %in% GeneSets |"cannonicalPathways" %in% GeneSets| "ImmunoSignatures" %in% GeneSets | "Motifs" %in% GeneSets){
+    genes_up_hsa <- getLDS(attributes = c("mgi_symbol"), 
+                          filters = "mgi_symbol", 
+                          values = DE_up, 
+                          mart = useMart("ensembl", dataset = "mmusculus_gene_ensembl"), 
+                          attributesL = c("hgnc_symbol"), 
+                          martL = useMart("ensembl", dataset = "hsapiens_gene_ensembl"), 
+                          uniqueRows=T)[,2]
+    entrez_up_hsa <- bitr(genes_up_hsa, fromType = "SYMBOL", toType="ENTREZID", OrgDb=org.Hs.eg.db)$ENTREZID
+    genes_down_hsa <- getLDS(attributes = c("mgi_symbol"), 
+                          filters = "mgi_symbol", 
+                          values = DE_down, 
+                          mart = useMart("ensembl", dataset = "mmusculus_gene_ensembl"), 
+                          attributesL = c("hgnc_symbol"), 
+                          martL = useMart("ensembl", dataset = "hsapiens_gene_ensembl"), 
+                          uniqueRows=T)[,2]
+    entrez_down_hsa <- bitr(genes_down_hsa, fromType = "SYMBOL", toType="ENTREZID", OrgDb=org.Hs.eg.db)$ENTREZID
   }
+  
+  # Hallmark enrichment
+  if("Hallmark" %in% GeneSets){
+    print("Performing Hallmark enrichment")
+    if(length(entrez_up_hsa)<20){
+      print("Too few upregulated genes for Hallmark enrichment (<20)")
+      results$Hallmark_up <- "Too few upregulated genes for Hallmark enrichment (<20)"
+    }else{
+      Hallmark_up <- enricher(entrez_up_hsa,
+                          TERM2GENE=hallmark_genes,
+                          universe = universe_mouse2human_Entrez,  
+                          pAdjustMethod = pCorrection,
+                          pvalueCutoff  = pvalueCutoff,
+                          qvalueCutoff = qvalueCutoff)
+      
+      results$HALLMARKup <- as.data.frame(Hallmark_up)
+      if(nrow(results$HALLMARKup)<1){
+        results$HALLMARKup_plot <- "No Hallmark enrichment for upregulated genes"
+      }else{
+        results$HALLMARKup_plot <- clusterProfiler::dotplot(Hallmark_up,
+                                                          showCategory = showMax,
+                                                          font.size= font.size,
+                                                          title = paste("Hallmark enrichment for genes upregulated in: ",comparison,sep="")
+                                                          )
+      }
+    }
+    if(length(entrez_down_hsa)<20){
+      print("Too few downregulated genes for Hallmark enrichment (<20)")
+      results$Hallmark_down <- "Too few downregulated genes for Hallmark enrichment (<20)"
+    }else{
+      Hallmark_down <- enricher(entrez_down_hsa,
+                                TERM2GENE=hallmark_genes,
+                              universe = universe_mouse2human_Entrez,  
+                              pAdjustMethod = pCorrection,
+                              pvalueCutoff  = pvalueCutoff,
+                              qvalueCutoff = qvalueCutoff)
+    
+      results$HALLMARKdown <- as.data.frame(Hallmark_down)
+      if(nrow(results$HALLMARKdown)<1){
+        results$HALLMARKdown_plot <-"No Hallmark enrichment for downregulated genes"
+      }else{
+        results$HALLMARKdown_plot <- clusterProfiler::dotplot(Hallmark_down,
+                                                        showCategory = showMax,
+                                                        font.size= font.size,
+                                                        title = paste("Hallmark enrichment for genes downregulated in: ",comparison,sep="")
+                                                        )
+      }
+    }
   }
+
+    # Cannonical Pathway enrichment
+  if("cannonicalPathways" %in% GeneSets){
+    print("Performing Cannonical Pathway (C2) enrichment")
+    if(length(entrez_up_hsa)<20){
+      print("Too few upregulated genes for Cannonical Pathway enrichment (<20)")
+      results$cannonicalPathways_up <- "Too few upregulated genes for Motif enrichment (<20)"
+    }else{
+      cannonicalPathways_up <- enricher(entrez_up_hsa,
+                          TERM2GENE=cannonicalPathway_genes,
+                          universe = universe_mouse2human_Entrez,  
+                          pAdjustMethod = pCorrection,
+                          pvalueCutoff  = pvalueCutoff,
+                          qvalueCutoff = qvalueCutoff)
+    
+      results$cannonicalPathwaysup <- as.data.frame(cannonicalPathways_up)
+      if(nrow(results$cannonicalPathwaysup)<1){
+        results$cannonicalPathwaysup_plot <- "No cannonical pathway enrichment for upregulated genes"
+      }else{
+        results$cannonicalPathwaysup_plot <- clusterProfiler::dotplot(cannonicalPathways_up,
+                                                          showCategory = showMax,
+                                                          font.size= font.size,
+                                                          title = paste("Cannonical pathway  enrichment for genes upregulated in: ",comparison,sep="")
+                                                          )
+      }
+    }
+    
+    if(length(entrez_down_hsa)<20){
+      print("Too few downregulated genes for cannonical pathway  enrichment (<20)")
+      results$cannonicalPathways_down <- "Too few downregulated genes for cannonical pathway enrichment (<20)"
+    }else{
+      cannonicalPathways_down <- enricher(entrez_down_hsa,
+                            TERM2GENE=cannonicalPathway_genes,
+                            universe = universe_mouse2human_Entrez,  
+                            pAdjustMethod = pCorrection,
+                            pvalueCutoff  = pvalueCutoff,
+                            qvalueCutoff = qvalueCutoff)
+    
+      results$cannonicalPathwaysdown <- as.data.frame(cannonicalPathways_down)
+      if(nrow(results$cannonicalPathwaysdown)<1){
+        results$cannonicalPathwaysdown_plot <-"No cannonical pathway enrichment for downregulated genes"
+      }else{
+        results$cannonicalPathwaysdown_plot <- clusterProfiler::dotplot(cannonicalPathways_down,
+                                                          showCategory = showMax,
+                                                          font.size= font.size,
+                                                          title = paste("Cannonical pathway enrichment for genes downregulated in: ",comparison,sep="")
+                                                          )
+      }
+    }
+  }
+  
+  # Motif enrichment
+  if("Motifs" %in% GeneSets){
+    print("Performing Motif enrichment")
+    if(length(entrez_up_hsa)<20){
+      print("Too few upregulated genes for Motif enrichment (<20)")
+      results$Motif_up <- "Too few upregulated genes for Motif enrichment (<20)"
+    }else{
+      Motif_up <- enricher(entrez_up_hsa,
+                          TERM2GENE=motifs,
+                          universe = universe_mouse2human_Entrez,  
+                          pAdjustMethod = pCorrection,
+                          pvalueCutoff  = pvalueCutoff,
+                          qvalueCutoff = qvalueCutoff)
+    
+      results$Motifup <- as.data.frame(Motif_up)
+      if(nrow(results$Motifup)<1){
+        results$Motifup_plot <- "No Motif enrichment for upregulated genes"
+      }else{
+        results$Motifup_plot <- clusterProfiler::dotplot(Motif_up,
+                                                          showCategory = showMax,
+                                                          font.size= font.size,
+                                                          title = paste("Motif enrichment for genes upregulated in: ",comparison,sep="")
+                                                          )
+      }
+    }
+    
+    if(length(entrez_down_hsa)<20){
+      print("Too few downregulated genes for Motif enrichment (<20)")
+      results$Motif_down <- "Too few downregulated genes for Motif enrichment (<20)"
+    }else{
+      Motif_down <- enricher(entrez_down_hsa,
+                            TERM2GENE=motifs,
+                            universe = universe_mouse2human_Entrez,  
+                            pAdjustMethod = pCorrection,
+                            pvalueCutoff  = pvalueCutoff,
+                            qvalueCutoff = qvalueCutoff)
+    
+      results$Motifdown <- as.data.frame(Motif_down)
+      if(nrow(results$Motifdown)<1){
+        results$Motifdown_plot <-"No Motif enrichment for downregulated genes"
+      }else{
+        results$Motifdown_plot <- clusterProfiler::dotplot(Motif_down,
+                                                          showCategory = showMax,
+                                                          font.size= font.size,
+                                                          title = paste("Motif enrichment for genes downregulated in: ",comparison,sep="")
+                                                          )
+      }
+    }
+  }
+  
+  # Immunosignatures enrichment
+  if("ImmunoSignatures" %in% GeneSets){
+    print("Performing immunesignature enrichment")
+    if(length(entrez_up_hsa)<20){
+      print("Too few upregulated genes for Immunosignature enrichment (<20)")
+      results$ImmSig_up <- "Too few upregulated genes for Immunosignature enrichment (<20)"
+    }else{
+      ImmSig_up <- enricher(entrez_up_hsa,
+                          TERM2GENE=immuno_genes,
+                          universe = universe_mouse2human_Entrez,  
+                          pAdjustMethod = pCorrection,
+                          pvalueCutoff  = pvalueCutoff,
+                          qvalueCutoff = qvalueCutoff)
+    
+      results$ImmSigup <- as.data.frame(ImmSig_up)
+      if(nrow(results$ImmSigup)<1){
+        results$ImmSigup_plot <- "No Immunosignature enrichment for upregulated genes"
+      }else{
+        results$ImmSigup_plot <- clusterProfiler::dotplot(ImmSig_up,
+                                                          showCategory = showMax,
+                                                          font.size= font.size,
+                                                          title = paste("Immunosignature enrichment for genes upregulated in: ",comparison,sep="")
+                                                          )
+      }
+    }
+    if(length(entrez_down_hsa)<20){
+      print("Too few downregulated genes for Immunosignature enrichment (<20)")
+      results$ImmSig_down <- "Too few downregulated genes for Immunosignature enrichment (<20)"
+    }else{
+      ImmSig_down <- enricher(entrez_down_hsa,
+                          TERM2GENE=immuno_genes,
+                          universe = universe_mouse2human_Entrez,  
+                          pAdjustMethod = pCorrection,
+                          pvalueCutoff  = pvalueCutoff,
+                          qvalueCutoff = qvalueCutoff)
+    
+      results$ImmSigdown <- as.data.frame(ImmSig_down)
+      if(nrow(results$ImmSigdown)<1){
+        results$ImmSigdown_plot <- "No Immunosignature enrichment for downregulated genes"
+      }else{
+        results$ImmSigdown_plot <- clusterProfiler::dotplot(ImmSig_down,
+                                                          showCategory = showMax,
+                                                          font.size= font.size,
+                                                          title = paste("Immunosignature enrichment for genes downregulated in: ",comparison,sep="")
+                                                          )
+      }
+    }
+  }
+  results
+}
+
+ # Function to plot a heatmap of genes responsible for gene set enrichment
+plotGSEAHeatmap<-function(GSEA_result,
+                        GeneSet, 
+                        term,
+                        regulation){
+  xterm <- paste("^", term, "$", sep="") 
+  tmp <- GSEA_result[grep(xterm,GSEA_result$Description),]
+  gene.list <- unique(unlist(strsplit(tmp$geneID, split = "/")))
+    
+  if(GeneSet == "KEGG"){
+    gene.list <- bitr(gene.list, 
+                      fromType = "ENTREZID", 
+                      toType="SYMBOL", 
+                      OrgDb="org.Mm.eg.db")[,2]
+  }
+  
+  if(GeneSet == "HALLMARK" | GeneSet == "ImmunoSignatures" | GeneSet == "Motifs"){
+    gene.list <- getLDS(attributes = c("hgnc_symbol"), 
+                        filters = "hgnc_symbol", 
+                        values = gene.list, 
+                        mart = human, 
+                        attributesL = c("mgi_symbol"), 
+                        martL = mouse, 
+                        uniqueRows=T)[,2]
+    }
+  
+  plotHeatmap(geneset = gene.list,
+              keyType = "Symbol",
+              title = paste("Heatmap of genes responsible for enrichment of term: ",term,", in ",deparse(substitute(GSEA_result)),sep=""),
+                show_rownames = TRUE,
+                cluster_cols = FALSE)
+}
 
 ```
 
+# 2. Project information
 
-
-# Project information
+*Please specify important information on the data set.*
 
 * Scienfitic question: 
 
+* IDs: 
 * Samples: 
 * Conditions:
 * Species:
@@ -748,24 +1193,23 @@ plot_single_gene <-function(input=norm_anno,
 * Seq-Tracker: 
 
 * RNA-isolation: 
-* QC Check: 
 * Library-Production: 
-* QC Check: 
-* Sequencing method to be used:
-* Sequencing run: 
+* Sequencing method:
+* Sequencing run(s): 
 * Alignment: 
 * QC: 
-* Data Analysis: 
 
 * Project directories on Illumina: 
 * Project directory on blades: 
 
 **Workflow Summary:**
+
 *Space for notes concerning the global workflow and quality checks.*
 
 ## Set project directory 
 
 **Obligatory structure of your directory:**
+
 The project directory needs to contain a folder */Data*, which contains: 
 
 1) The output folder of the bulk RNAseq Kallisto pipeline including the folders *kallisto* and *qc* 
@@ -775,12 +1219,23 @@ The project directory needs to contain a folder */Data*, which contains:
       *Data/output/qc/multiqc/multiqc_data/multiqc_fastqc.txt*. 
 
 2) A sample table:  *sample_table.txt*, which should contain *at least* the following columns: 
-    * Sample Identifier (e.g. 3609): "ID"
-    * Sample Name (e.g. wt_8mo_5870): "sample_name"
-    * Condition (e.g. wt_8mo): "condition"   --> merged sample information that is used for DE calling 
-    * Optional additional information: gender, age, date of experiment, ... 
+  * Sample Identifier (e.g. 3609): "ID"
+  * Sample Name (e.g. wt_8mo_5870): "sample_name"
+  * Condition (e.g. wt_8mo): "condition"   --> merged sample information that is used for DE calling 
+  * Optional additional information: gender, age, date of experiment, ... 
 
-3) and a gene annotation file (produced from the gtf file used for buildig the kallisto index).
+3) A gene annotation file (produced from the gtf file used for buildig the kallisto index).
+  * mouse: ID2SYMBOL_gencode_vM*X*_transcript.txt
+  * human: ID2SYMBOL_gencode_v*X*_transcript.txt
+
+4) A folder *GMTfiles* containing gene set annotation, incl. GO, KEGG, and the MSigDB (http://software.broadinstitute.org/gsea/msigdb) data sets: hallmark, motif and immunological gene sets
+
+**Specify the organism of the data set**
+
+```{r}
+organism = "mouse" # choose "mouse" or "human"
+```
+
 
 **Specify the project directory here:**
 
@@ -792,22 +1247,51 @@ dir.create(file.path(dir, "Analysis", "Tables"), recursive = T)
 dir.create(file.path(dir, "Analysis", "Plots"), recursive = T)
 ```
 
+## Load gene set annotation
+```{r}
+# Transcrption Factors
+# read mouse TF list
+TFlist_mm <-read.csv(file.path(dir, "Data/GMTfiles/20180317_TFlist_mouse_TFdb_riken.csv", sep=""), 
+                       stringsAsFactors = FALSE, 
+                       header = FALSE)[,1]
+# read human TF list
+TFlist_hs <- read.csv(file.path(dir, "Data/GMTfiles/20180317_TFlist_human_Lambert_Cell2018.csv", sep=""),
+                       stringsAsFactors = FALSE, 
+                       header = FALSE)[,1]
+# GO
+GO_mm <- read.delim(file.path(dir, "Data/GMTfiles/GO_mm38p12_ensembl181121.txt"),header=TRUE,stringsAsFactors = FALSE,quote="")
+GO_hs <- read.delim(file.path(dir, "Data/GMTfiles/GO_hg38p12_ensembl181121.txt"),header=TRUE,stringsAsFactors = FALSE,quote="")
+# KEGG
+KEGG_mm <- read.delim(file.path(dir, "Data/GMTfiles/KEGG_mm10_clusterProfiler181121.txt"),header=TRUE,stringsAsFactors = FALSE)
+KEGG_hs <- read.delim(file.path(dir, "Data/GMTfiles/KEGG_hg38_clusterProfiler181121.txt"),header=TRUE,stringsAsFactors = FALSE)
+# MiSigDB gene sets
+hallmark_genes <- clusterProfiler::read.gmt(file.path(dir, "Data/GMTfiles/h.all.v6.2.entrez.gmt"))
+cannonicalPathway_genes <- clusterProfiler::read.gmt(file.path(dir, "Data/GMTfiles/c2.cp.v6.2.entrez.gmt"))
+immuno_genes <- clusterProfiler::read.gmt(file.path(dir, "Data/GMTfiles/c7.all.v6.2.entrez.gmt"))
+motifs <- clusterProfiler::read.gmt(file.path(dir, "Data/GMTfiles/c3.all.v6.2.entrez.gmt"))
+```
 
-# Analysis customizations 
+## Colour scheme customization
 
-## Colour scheme
-Define you colour schemes according to your data set and your variables
+Define you colour schemes according to your data set and your variables!
+
+For hex colors use: https://www.color-hex.com
 
 ```{r}
-col_genotype <- c("#90D95E", "#86BE9E")
+# Genotype
+col_genotype <- c("#81c354", "#86BE9E")
 names(col_genotype) <- c("wt", "tg") 
+# Age
 col_age = c("#FFEDA0", "#FEB24C", "#F03B20")
 names(col_age) <- c("4mo", "8mo", "12mo")
+# Sex
 col_sex <- c("##66C3D0", "#008DD2")
 names(col_sex) <- c("f", "m")
+# merged: Genotype and Age
 col_genotype_age <- c(brewer.pal(3, "Blues"), brewer.pal(3, "Oranges"))
 names(col_genotype_age) <- c("wt_4mo", "wt_8mo", "wt_12mo", "tg_4mo", "tg_8mo", "tg_12mo")
 
+# combine color code into list
 ann_colors <- list(Genotype = col_genotype, 
                   Age = col_age, 
                   Sex = col_sex,
@@ -815,7 +1299,7 @@ ann_colors <- list(Genotype = col_genotype,
 ```
 
 
-# Data Import
+# 3. Data Import
 
 ## Load gene annotation
 
@@ -829,7 +1313,7 @@ For consistency, this file should have been produced from the .gtf file used for
 # Specify the filename of your gene annotation file here: 
 annotation_filename <- "ID2SYMBOL_gencode_vM13_transcript.txt"
 
-gene_annotation <- read.delim(file.path(dir, "Data", annotation_filename), 
+tx_annotation <- read.delim(file.path(dir, "Data", annotation_filename), 
                          header = F , 
                          stringsAsFactors = F,
                          col.names = c("GENEID", "TXNAME", "SYMBOL", "GENETYPE"))
@@ -845,13 +1329,13 @@ rownames(sample_table) <- sample_table$ID
 sample_table
 ```
 
-# Quality check
+## Quality check
 
-The following visualizations of the data quality check results are only an addition to the much more comprehensive quality plots provided in the MultiQC html files. 
+The following visualizations of the data quality check results are only an addition to the much more comprehensive quality plots provided in the MultiQC .html files. 
 
 **Please check the multiQC output thoroughly before you perfrom any analysis.**
 
-## Fastq QC
+### Fastq QC
 
 Read and visualize fastQC MultiQC output. 
 
@@ -871,7 +1355,7 @@ fastq_qc$lane <- unlist(lapply(strsplit(fastq_qc$Sample, split = "_"), `[[`, 9))
 rownames(fastq_qc) <- paste(fastq_qc$run, fastq_qc$ID, fastq_qc$lane, sep = "_")
 ```
 
-Visualization: Heatmap of fastQC quality checks
+Visualization: **Heatmap of fastQC quality checks**
 
 ```{r, fig.height=8, fig.width=10}
 fastQC_HC <- t(fastq_qc[,colnames(fastq_qc) %in% c("per_base_sequence_quality",
@@ -891,10 +1375,10 @@ draw(Heatmap(fastQC_HC,
 ```
 
 
-## Kallisto QC
+### Kallisto QC
 Read  and visualize kallisto MultiQC output.
 
-Before alignment, multiple fastq files from multiple lanes or runs for a single sample are merged and aligned as one. Thus, we have only one alignment score per sample. 
+Before alignment, multiple fastq files from multiple lanes or runs for a single sample are merged and aligned as one sample. Thus, we have only one alignment score per sample. 
 
 Since we want to later visualize the alignment statistics in analysis plots, we add this information to our sample table.
 
@@ -908,29 +1392,36 @@ kallisto_qc$Sample <- do.call(rbind, strsplit(kallisto_qc$Sample, split = "\\_")
 sample_table <- merge(sample_table, kallisto_qc, by.x = "ID", by.y = "Sample")
 ```
 
-Visualization of successfully pseudoaligned and total reads:
-```{r}
-tab <-sample_table[,c("ID", "pseudoaligned_reads","total_reads")]
-tab <-gather(tab, "total_reads", "pseudoaligned_reads", key = "type", value = "reads")
+Visualization of pseudoaligned and total reads:
 
-ggplot(tab[tab$type %in% c("pseudoaligned_reads", "total_reads"),], aes(x = reorder(ID,-reads), y = reads, fill = type)) + 
+```{r}
+alignstat <-sample_table[,c("ID", "pseudoaligned_reads","total_reads")]
+alignstat <-gather(alignstat, "total_reads", "pseudoaligned_reads", key = "type", value = "reads")
+
+ggplot(alignstat, aes(x = reorder(ID,-reads), y = reads, fill = type)) + 
   geom_bar(stat = "identity", position = "dodge", colour = "black") + 
-  scale_y_continuous(breaks = c(2 * 10^6, 5 * 10^6, 10 * 10^6, 20 * 10^6, 30 * 10^6, 30 * 10^6, 40 * 10^6))+
-  scale_fill_manual(name = "", values = c("#7fcdbb", "#edf8b1")) + 
+  scale_y_continuous(breaks = c(c(5 , 10, 25, 50, 100) * 10^6))+
+  scale_fill_manual(name = "", values = c("white", "grey")) + 
   ylab("Reads") + 
   xlab("Sample IDs") + 
   geom_hline(yintercept=5 * 10^6, linetype="dashed", color = "red") +
-  ggtitle("Total reads and aligned reads") +
+  ggtitle("Total reads and pseudoaligned reads") +
   theme(axis.text.x = element_text(angle = 70, size = 9, hjust = 1, vjust = 1), 
         strip.background = element_rect(fill = "white"), 
         panel.background = element_rect(fill = "white", colour = "black"), 
         legend.position = "bottom"
   )
-
-rm(tab)
 ```
 
-## Exclude samples after QC (based e.g. on number of unique alignments, percent of aligned reads?)
+```{r, echo=FALSE}
+rm(alignstat)
+```
+
+
+### Exclude samples after QC (based e.g. on number of unique alignments, percent of aligned reads?)
+
+In case, the data set contains samples of poor quality or simply to few reads, we might want to exclude these samples. In the following chunks, all samples with less than 5.000.000 reads are excluded from the subsequent analysis.
+
 ```{r qc sample exclusion}
 # define read cutoff
 samples_to_keep <- sample_table[sample_table$pseudoaligned_reads > 5000000,]$ID
@@ -940,18 +1431,19 @@ sample_table <- sample_table[which(sample_table$ID %in% samples_to_keep),]
 rownames(sample_table) <- sample_table$ID
 ```
 
-
 ## Format sample table
-Define column for differential test design and reorder factor levels for later plotting.
 
-```{r colour definitions, eval = F}
+For the correct order of the samples in later plots, we define the column of our sample table that contains the information of interest and reorder its factor levels.
+
+```{r colour definitions}
 ## Add columns with factors for comparisons in model
 sample_table$Genotype_Age <- factor(sample_table$Genotype_Age,
                                    levels = c("wt_4mo", "wt_8mo", "wt_12mo", "tg_4mo", "tg_8mo","tg_12mo"))
 
-sample_table$Age <- factor(sample_table$Age, levels = c("4mo", "8mo", "12mo"))
+sample_table$Age <- factor(sample_table$Age, 
+                           levels = c("4mo", "8mo", "12mo"))
 
-# order according to Genotype_Age
+# order according to factor of interest
 sample_table <- sample_table[order(sample_table$Genotype_Age),]
 
 # define factor for order of samples in plotting 
@@ -959,17 +1451,17 @@ plot_order <- "Genotype_Age"
 ```
 
 
-# Data Import and Processing
+# 4. TXimport and Processing
 
-A newer and recommended pipeline for RNA-seq analysis is to use fast transcript abundance quantifiers, such as kallisto or Salmon, upstream of DESeq2, and then to create gene-level count matrices for use with DESeq2 by importing the quantification data using the tximport package.
+A new and recommended pipeline for RNA-seq analysis is to use fast transcript abundance quantifiers, such as kallisto or Salmon, upstream of DESeq2, and then to create gene-level count matrices for use with DESeq2 by importing the quantification data using the tximport package.
 
 We use tximport and DESeq2 based on the gene-level estimated counts from Kallisto (Bray, Pimentel, Melsted, Pachter 2016). 
 
 Some advantages of using this methods for transcript abundance estimation are: 
 
-  (i) this approach corrects for potential changes in gene length across samples (e.g. from differential isoform usage) (Trapnell et al. 2013), 
-  (ii) some of these methods (Salmon, Sailfish, kallisto) are substantially faster and require less memory and disk usage compared to alignment-based methods that require creation and storage of BAM files, and,
-  (iii) it is possible to avoid discarding those fragments that can align to multiple genes with homologous sequence, thus increasing sensitivity (Robert and Watson 2015).
+  * this approach corrects for potential changes in gene length across samples (e.g. from differential isoform usage) (Trapnell et al. 2013), 
+  * some of these methods (Salmon, Sailfish, kallisto) are substantially faster and require less memory and disk usage compared to alignment-based methods that require creation and storage of BAM files, and,
+  * it is possible to avoid discarding those fragments that can align to multiple genes with homologous sequence, thus increasing sensitivity (Robert and Watson 2015).
 
 Full details on the motivation and methods for importing transcript level abundance and count estimates, summarizing to gene-level count matrices and producing an offset which corrects for potential changes in average transcript length across samples are described in (Soneson, Love, and Robinson 2015). Note that the tximport-to-DESeq2 approach uses estimated gene counts from the transcript abundance quantifiers, but not normalized counts.
 
@@ -982,20 +1474,19 @@ as a matrix, which is then used as an offset for different expression of gene-le
 ```{r kallisto import}
 # Define path where the Kallisto files are stored
 files <- paste(dir, "/Data/output/kallisto/kallisto/", samples_to_keep, "/abundance.h5", sep = "")
-
+# Naming the entries in the vector assures correct column names in the expression tables
 names(files) <- sample_table$ID
-
 # Import samples and perform the distribution of transcripts to genes
 txi_kallisto <- tximport(files, 
                          type="kallisto", 
-                         tx2gene=gene_annotation[,2:1])
+                         tx2gene=tx_annotation[,2:1])
 ```
 
 ## Building the DESeqDataSet
 
 The object class used by the DESeq2 package to store the read counts and the intermediate estimated quantities during statistical analysis is the DESeqDataSet, which will usually be represented in the code here as an object called "dds". 
 
-A DESeqDataSet object must have an associated design formula. The design formula expresses the variables which will be used in modeling. The formula should be a tilde (~) followed by the variables with plus signs between them (it will be coerced into an formula if it is not already). The design can be changed later, however then all differential analysis steps should be repeated, as the design formula is used to estimate the dispersions and to estimate the log2 fold changes of the model.
+A DESeqDataSet object must have an associated design formula. The design formula expresses the variables which will be used in modeling. The formula should be a tilde (~) followed by the variables with plus signs between them (it will be coerced into a formula if it is not already). The design can be changed later, however then all differential analysis steps should be repeated, as the design formula is used to estimate the dispersions and to estimate the log2 fold changes of the model.
 
 ```{r DESeqDatasetFromTXimport}
 dds_txi <- DESeqDataSetFromTximport(txi = txi_kallisto, 
@@ -1005,26 +1496,31 @@ dds_txi <- DESeqDataSetFromTximport(txi = txi_kallisto,
 
 ## Pre-filtering
 
-While it is not necessary to pre-filter low count genes before running the DESeq2 functions, there are two reasons which make pre-filtering useful: by removing rows in which there are very few reads, we reduce the memory size of the dds data object, and we increase the speed of the transformation and testing functions within DESeq2. Here we perform a minimal pre-filtering to keep only rows that have at least 10 reads total. 
-Note that more strict filtering to increase power is automatically applied via independent filtering or independent hypothesis weighting on the mean of normalized counts within the results function.
+While it is not necessary to pre-filter low count genes before running the DESeq2 functions, there are two reasons which make pre-filtering useful: 
+  * by removing rows in which there are very few reads, we reduce the memory size of the dds data object, and 
+  * we increase the speed of the transformation and testing functions within DESeq2. 
+
+Here, we perform a minimal pre-filtering to keep only rows that have at least 10 reads total. 
+
+*Note that more strict filtering to increase power is automatically applied via independent filtering or independent hypothesis weighting on the mean of normalized counts within the results function.*
 
 ```{r pre-filtering}
 genes_to_keep <- rowSums(counts(dds_txi)) >= 10
 dds <- dds_txi[genes_to_keep,]
 ```
 
-**Number of genes after filterin is:** `r sum(genes_to_keep) `
+**Number of genes after filtering is:** `r sum(genes_to_keep) `
 
-# DESeq calculations
+# 5. DESeq calculations
 
-**DESeq2:** Estimate variance-mean dependence (2) in count data from high-throughput sequencing assays and test for differential expression based on a model using the negative binomial distribution(1).
+**DESeq2:** Estimate variance-mean dependence (2) in count data from high-throughput sequencing assays and test for differential expression based on a model using the negative binomial distribution (1).
 
 1) In inferential testing a distributional assumption is needed because we want to estimate the probability of extreme events just appearing by chance (e.g. large fold change) from limited replicates. The test statistic of ANOVA (or t-test) follows a Student's t distribution, a specific case of the normal distribution. However, counts, as produced in RNA-seq experiments, cannot be normally distributed by definition(you can't have -3 counts, or 12.2 counts). Two distributions for count based data are Poisson, which presumes that the variance and mean are equal, or negative binomial, a.k.a. Gamma-Poisson, which does not. The spread of values among biological replicates is more than given by the one parameter Poisson distribution and it seems to be captured by the two parameter (mean & variance) NB sufficiently well.
 
 2) Information sharing across genes for variance estimation:  
 In order to test the differential expression of a gene, we need to estimate its mean and variance for the underlying negative binomial distribution. Inferential methods that treat each gene separately suffer from the high uncertainty of within-group variance estimates. However, this limitation can be overcome by pooling information across genes, specifically, by exploiting assumptions about the similarity of the variances of different genes measured in the same experiment . DESeq2 detects and corrects dispersion estimates through modeling of the dependence of the dispersion on the average mean over all samples.
 
-The standard differential expression analysis steps are wrapped into a single function, DESeq. The estimation steps performed by this function are described in the manual page for ?DESeq and in the Methods section of the DESeq2 publication (Love, Huber, and Anders 2014).
+The standard differential expression analysis steps are wrapped into a single function, DESeq(). The estimation steps performed by this function are described in the manual page for ?DESeq and in the Methods section of the DESeq2 publication (Love, Huber, and Anders 2014).
 
 This function performs a default analysis through the steps:
 
@@ -1040,36 +1536,39 @@ For complete details on each step, see the manual pages of the respective functi
 dds <- DESeq(dds)
 ```
 
-## Normalized count table
-For inspection of the normalized data, we write the normalized counts into a data.frame "norm".
+## Normalized count table  
 
-**Is there a better way to store the information? Maybe include it in the DESeq Object?**
+For inspection of the normalized data, we write the normalized counts into a data.frame called "norm_anno".
 
-```{r norm}
-norm <- as.data.frame(counts(dds, normalized=T))
-```
-
-## Add gene annotation
 ```{r gene annotation}
-norm_anno <- norm
-norm_anno$GENEID <- row.names(norm_anno) # ensembl-IDs as row names
-norm_anno <- merge(norm_anno, 
-                   gene_annotation[!duplicated(gene_annotation$GENEID),c("GENEID", "SYMBOL", "GENETYPE")], 
-                   by = "GENEID") 
-```
+norm_anno <- as.data.frame(counts(dds, normalized=T))
+norm_anno$GENEID <- row.names(norm_anno)
 
-## Add additional gene information from biomart
-```{r}
+# add gene annotation extracted from the gtf file
+gene_annotation <- tx_annotation[!duplicated(tx_annotation$GENEID),c("GENEID", "SYMBOL", "GENETYPE")]
+gene_annotation <- gene_annotation[match(rownames(norm_anno), gene_annotation$GENEID),]
+
+# check if row names of the normalized table and the gene annotation match perfectly
+all(rownames(norm_anno) == gene_annotation$GENEID)
+
+# add additional gene annotation downloaded from biomart
 biomart <- read.delim(file.path(dir, "Data", "biomart_180914.txt"), stringsAsFactors = FALSE)
-idx <- match(unlist(lapply(strsplit(norm_anno$GENEID, split = "[.]"), `[[`, 1)), biomart$Gene.stable.ID)
+idx <- match(unlist(lapply(strsplit(gene_annotation$GENEID, split = "[.]"), `[[`, 1)), biomart$Gene.stable.ID)
+gene_annotation$DESCRIPTION <- biomart$Gene.description[idx]
+gene_annotation$CHR <- biomart$Chromosome.scaffold.name[idx]
 
-norm_anno$DESCRIPTION <- biomart$Gene.description[idx]
-norm_anno$CHR <- biomart$Chromosome.scaffold.name[idx]
+# merge expression table and annotation
+norm_anno <- merge(norm_anno,
+                   gene_annotation,
+                   by = "GENEID")
+rownames(norm_anno) <- norm_anno$GENEID
+
+norm_anno[1:3,c(1:2, (ncol(norm_anno)-5):ncol(norm_anno))]
 ```
 
-# Variance stabilizing transformation
+## Variance stabilizing transformation
 
-In order to test for differential expression, we operate on raw counts and use discrete distributions. However for other downstream analyses - e.g. for visualization or clustering - it might be useful to work with transformed versions of the count data.
+In order to test for differential expression, we operate on raw counts and use discrete distributions. However for other downstream analyses - e.g. for visualization or clustering - it might be useful to work with transformed versions of the count data.  
 
 Maybe the most obvious choice of transformation is the logarithm. Since count values for a gene can be zero in some conditions (and non-zero in others), some advocate the use of pseudocounts, i.e. transformations of the form: y=log2(n+n0) where n represents the count values and n0 is a positive constant.
 
@@ -1089,82 +1588,72 @@ dds_vst <- rlog(dds, blind = TRUE)
 # dds_vst <- vst(dds, blind = TRUE)
 ```
 
-## Plot row standard deviations versus row means
+### Plot row standard deviations versus row means
+
 ```{r meanSdPlot, echo=TRUE}
-meanSdPlot(as.matrix(assay(dds_vst)), ranks = FALSE, 
-           ggtitle("Row standard deviations versus row means of variance-stabilized counts"))
+meanSdPlot(as.matrix(assay(dds_vst)), ranks = FALSE)
 ```
 
-# Global visualization
+***
 
-## Specify sample annotation for plotting
+# 6. Exploratory Data Analysis
+
+Specify sample annotation for plotting
 ```{r}
 # choose columns from sampletable for heatmap annotation
-plot_annotation <- sample_table[,c("Genotype","Age"), drop = F]
+plot_annotation <- sample_table[,c("Genotype","Age","pseudoaligned_reads"), drop = F]
 
 rownames(plot_annotation) <- sample_table$ID
 ```
 
 
-## Gene Types
+## Frequencies of gene types
 ```{r plot genetypes}
 TypeCounts <- as.data.frame(table(norm_anno$GENETYPE))
 colnames(TypeCounts) <- c("Type", "Frequency")
 TypeCounts <- subset(TypeCounts, Frequency>0)
 
 ggplot(TypeCounts, aes(x=Type, y= Frequency,  label=Frequency))+
-  geom_bar(stat="identity",fill="lightblue",colour="grey") +
+  geom_bar(stat="identity",fill="grey",colour="grey") +
   theme_bw()+
   geom_text(size = 3, position = position_stack(vjust = 1))+
   guides(fill=FALSE)+
   theme(text = element_text(size=10),axis.text.x = element_text(angle =90, hjust = 1))+
   xlab("")
-
-# ggsave(file.path(dir, "Analysis", "Plots", paste(Sys.Date(),"_genetypes.pdf", sep = "")))
 ```
 
-## Hierarchical Clustering of all present genes
+## Histogram of of means per gene over all samples
+```{r}
+rMeans <- as.data.frame(log(rowMeans(counts(dds, normalized=TRUE)),10))
+colnames(rMeans) <- "rowMeans"
+ggplot(rMeans, aes(x = rowMeans)) + 
+  geom_histogram(bins=100) +
+  xlab("log10(rowMeans)")+
+  scale_x_continuous(breaks=c(0,1,2,3,4,5,6))+
+  theme_bw()
+```
 
-### Scaled normalized Counts {.tabset .tabset-fade}
+## Boxplots of highest expressed genes
 
-#### clustered Columns & Rows
+```{r, fig.height=10}
+highestGenes(numGenes = 50)
+```
+
+## Hierarchical Clustering of all present genes {.tabset .tabset-fade}
+
+Plot a heatmap of all hierarchically clustered present genes.
+
+### clustered Columns & Rows
 ```{r, echo=TRUE, fig.height=10, fig.width=12}
-
-heatmapFunction <- function(geneset,
-                    title="",
-                    show_rownames = FALSE,
-                    cluster_cols = FALSE){
-  if(geneset[1] =="all"){
-    input <- norm_anno
-  }else{
-    input <- norm_anno[norm_anno$GENEID %in% geneset,]
-  }
-  rownames(input) <- paste(input$GENEID, ":", input$SYMBOL, sep="")
-  input <- input[,colnames(input) %in% sample_table$ID]
-  input_scale <- t(scale(t(input)))
-  input_scale <- input_scale[,order(sample_table[[plot_order]], decreasing = FALSE)]
-
-  pheatmap(input_scale,
-         main=title,
-         show_rownames=show_rownames,
-         show_colnames=TRUE,
-         cluster_cols = cluster_cols, 
-         fontsize = 7,
-         annotation_col = plot_annotation,
-         annotation_colors = ann_colors,
-         breaks = scaleColors(data = input_scale, maxvalue = 2)[["breaks"]], 
-         color = scaleColors(data = input_scale, maxvalue = 2)[["color"]])
-}
-
-heatmapFunction(geneset = "all",
+plotHeatmap(geneset = "all",
                 title = "Heatmap of all present genes",
                 show_rownames = FALSE,
                 cluster_cols = TRUE)
 ```
 
-#### clustered Rows
+### clustered Rows
 ```{r, echo=TRUE, message=FALSE, results='hide', fig.height=10, fig.width=12}
-heatmapFunction(geneset = "all",
+plotHeatmap(geneset = "all",
                 title = "Heatmap of all present genes",
                 show_rownames = FALSE,
                 cluster_cols = FALSE)
@@ -1174,9 +1663,7 @@ heatmapFunction(geneset = "all",
 gc()
 ```
 
-## Hierarchical Clustering of most variable genes
-
-### Scaled normalized counts {.tabset .tabset-fade}
+## Hierarchical Clustering of most variable genes {.tabset .tabset-fade}
 
 ```{r, echo=TRUE}
 # define variable genes
@@ -1185,25 +1672,26 @@ q75 = quantile(rowVars(assay(dds_vst)), .75)
 q75_names = names(which(rv > q75))
 ```
 
-####  clustered Columns & Rows
+###  clustered Columns & Rows
 ```{r, echo=TRUE, message=FALSE, results='hide', fig.height=10, fig.width=12}
-heatmapFunction(geneset = q75_names,
+plotHeatmap(geneset = q75_names,
                 title = "Heatmap of all most variable genes",
                 show_rownames = FALSE,
                 cluster_cols = TRUE)
 ```
 
-####  clustered Rows
+###  clustered Rows
 ```{r, echo=TRUE, message=FALSE, results='hide', fig.height=10, fig.width=12}
-heatmapFunction(geneset = q75_names,
+plotHeatmap(geneset = q75_names,
                 title = "Heatmap of all most variable genes",
                 show_rownames = FALSE,
                 cluster_cols = FALSE)
 ```
 
-## Sample-to-Sample distances {.tabset .tabset-fade}
+## Sample-to-Sample correlation & distance {.tabset .tabset-fade}
 
 ### Correlation
+
 ```{r, fig.height=10, fig.width=12}
 # Correlation based on variance-stabilized counts
 sampleCor <- as.matrix(cor(assay(dds_vst), use="all.obs", method="pearson"))
@@ -1220,7 +1708,7 @@ pheatmap(sampleCor,
          fontsize = 8)
 ```
 
-### Distance
+### Distance  
 This function computes and returns the euclidean distance matrix between the rows of a data matrix, the samples in our case. 
 
 ```{r, fig.height=10, fig.width=12}
@@ -1266,9 +1754,9 @@ ggplot(eigenvalue, aes(dim, variance.percent))+
 ```
 
 ### Plot PCA {.tabset .tabset-fade}
-#### Condition
+#### Genotype_Age
 ```{r, fig.width=6, fig.height=6, fig}
-plot_pca(ntop="all", 
+plotPCA(ntop="all", 
          xPC=1, 
          yPC=2,
          color="Genotype_Age",
@@ -1281,7 +1769,7 @@ plot_pca(ntop="all",
 #### Donor Mouse
 ```{r, fig.width=6, fig.height=6}
 sample_table$Mouse_ID<-as.factor(sample_table$Mouse_ID)
-plot_pca(ntop="all", 
+plotPCA(ntop="all", 
          xPC=1, 
          yPC=2,
          color="Mouse_ID",
@@ -1293,7 +1781,7 @@ plot_pca(ntop="all",
 
 #### Pseudoaligned Reads
 ```{r, fig.width=6, fig.height=6}
-plot_pca(ntop="all", 
+plotPCA(ntop="all", 
          xPC=1, 
          yPC=2,
          color="pseudoaligned_reads",
@@ -1303,18 +1791,19 @@ plot_pca(ntop="all",
          title="Principle Component Analysis based on variance-stabilized counts")
 ```
 
-## PCA loadings
+### PCA loadings
 ```{r}
 plotLoadings(PC="PC1", ntop="all")
 plotLoadings(PC="PC2", ntop="all")
 plotLoadings(PC="PC3", ntop="all")
 ```
 
-# Gene-to-Gene correlation analysis over all samples
+## Gene-to-Gene correlation analysis over all samples
+
+In the following chunk, we define the upper quartile of the variable genes and identify those genes with a high positive correlation (r>0.95).
+
 ```{r}
-rv = rowVars(assay(dds_vst))
-q75 = quantile(rowVars(assay(dds_vst)), .75)
-q75_vst = assay(dds_vst)[rv > q75,]
+q75_vst = assay(dds_vst)[rowVars(assay(dds_vst)) > quantile(rowVars(assay(dds_vst)), .75),]
 
 rcor <- rcorr(t(q75_vst),type="pearson")
 rcor$sig <- rcor$P<0.05 & rcor$r>0 # define significant positive correlations
@@ -1326,165 +1815,226 @@ rcor_filt_melt <- melt(rcor_filt,na.rm = TRUE)
 rcor_filt_melt_cutoff <- rcor_filt_melt[rcor_filt_melt$value>0.95,]
 varR <- unique(rcor_filt_melt_cutoff$Var1)
 
-heatmapFunction(geneset = varR,
+plotHeatmap(geneset = varR,
                 title = "Heatmap of all variable and co-expressed genes",
                 show_rownames = FALSE,
                 cluster_cols = FALSE)
 ```
 
+## Expression of selected genes across conditions
 
-<!-- # Check for batch effect within the data -->
+Plot the expression of selected genes across conditions.
 
-<!-- In case you observe a batch effect in your data, the following code can help to define and correct for known and unknown batch effects.  -->
+```{r}
+plotSingleGene(data=norm_anno, 
+                 symbol="Itgam", 
+                 condition="Genotype_Age",
+                 anno_colour=col_genotype_age,
+                 shape= NULL)
 
-<!-- If you did not observe a batch effect, this section should be skipped. -->
+plotSingleGene(data=norm_anno, 
+                 symbol="Wdr18", 
+                 condition="Genotype_Age",
+                 anno_colour=col_genotype_age,
+                 shape= "Sex")
+```
 
-<!-- In case the global analysis showed that your data suffers from a technical batch effect, e.g. your samples cluster according to a certain covariate such as "sex" or "date of experiment". For known batch effects such as sequencing day or sex you may try to disregard the variance explained by this covariate in your later differential gene expression analysis. To check whether disregarding the variance explained by this covariate really improves the clustering of your samples you can correct your gene expression for this factor using limma. (https://bioconductor.org/packages/release/bioc/html/limma.html) -->
+## Heatmap of selected genes sets
 
-<!-- ```{r} -->
-<!-- Limma_batch(model=model.matrix(~sample_table$condition), -->
-<!--             batch=sample_table[c("Sex")], # Age is the batch effect?! -->
-<!--             batch_2=NULL, -->
-<!--             shape_opt="NULL", -->
-<!--             ntop=500, PC_1=1, PC_2=2, -->
-<!--             color_obj=sample_table$Genotype_Age, -->
-<!--             anno_colour=col_genotype_age, -->
-<!--             continuous=F, -->
-<!--             colour_gradient=redblue(100), -->
-<!--             point_size=3) -->
-<!-- ``` -->
+Plot a heatmap of genes annotated to a selected GO, KEGG or Hallmark term.
 
-<!-- In case your samples do not cluster according to the condition you are interested in, you may also try to find a hidden batch effect. The SVA tool finds all the variance in the data that is not explained by your covariates of interest and tries to model them out by adding surrogate variables to your sample_table that may even out these "hidden batches" in the later DESeq2 modeling. (http://master.bioconductor.org/packages/release/workflows/html/rnaseqGene.html#removing-hidden-batch-effects; http://journals.plos.org/plosgenetics/article?id=10.1371/journal.pgen.0030161) -->
-<!-- We first calculate these surrogate variables (SV) and then test their influence on our data in a PCA by using limma again to model the disregarding of the hidden batches. -->
+```{r, fig.height= 12, fig.width=12}
+plotGeneSetHeatmap(cat="GO", 
+                   term="neutrophil degranulation",
+                   organism = "mouse",
+                   show_rownames =TRUE, 
+                   cluster_cols = FALSE)
 
-<!-- By num.sv you can calculate how many SV the tool recommends you to use. However, you will have to test out different amounts of SV as this calculation is very vague and usually does not make much sense. -->
+plotGeneSetHeatmap(cat="KEGG", 
+                   term="Alzheimer disease",
+                   organism = "mouse",
+                   show_rownames =TRUE, 
+                   cluster_cols = FALSE)
+  
+plotGeneSetHeatmap(cat="HALLMARK", 
+                   term="HALLMARK_APOPTOSIS",
+                   organism = "mouse",
+                   show_rownames =TRUE, 
+                   cluster_cols = FALSE)
 
-<!-- ```{r} -->
-<!-- # Enter your variable to compare (your biological question)  -->
-<!-- # behind the ~ & SVA defines a matrix for your conditions -->
-<!-- mod  <- model.matrix(~ condition, sample_table) -->
-<!-- mod0 <- model.matrix(~   1, colData(dds)) -->
+```
 
-<!-- # By num.sv you can calculate how many SV the tool recommends you to use. However, you will have to test out different amounts of SV as this calculation is very vague and usually does not make much sense. -->
-<!-- num.sv(norm,mod,method="leek") -->
-<!-- ``` -->
+# 7. Batch effect removal
 
-<!-- You can then either try out the recommended amount of SV by changing n.sv or you start from n.sv=1 and go up and stop where your PcA starts to cluster more nicely as you expect it. -->
-<!-- ```{r} -->
-<!-- # By changing n.sv you can choose how many SV to calculate. -->
-<!-- svseq<- sva(assay(dds_vst), mod, mod0, n.sv = 7) -->
-<!-- ``` -->
+In case you observe a batch effect in the data, the following code can help to define and correct for known and unknown batch effects.
 
-<!-- You can display whether the calculated SV correlate with any of your known covariates by changing dds$condition to the column of your sample_table that you are interested in. -->
-<!-- ```{r} -->
-<!-- par(mfrow = c(2, 2), mar = c(3,5,3,1)) -->
-<!-- for (i in 1:ncol(svseq$sv)) { -->
-<!--   stripchart(svseq$sv[, i] ~ dds$condition, vertical = TRUE, main = paste0("SV", i)) -->
-<!--   abline(h = 0) -->
-<!-- } -->
-<!-- ``` -->
+**If you did not observe a batch effect, this section should be skipped.**
 
-<!-- Add surrogate variables to annotation table to reanalyse the batch effect via Limma. -->
-<!-- ```{r} -->
-<!-- for (i in 1:ncol(svseq$sv)) { -->
-<!--   sample_table[[paste0("SV",i)]]<- svseq$sv[, i] -->
-<!-- } -->
-<!-- ``` -->
+## LIMMA: Known batch effects
 
+In case the global analysis showed that your data suffers from a technical batch effect, e.g. your samples cluster according to a certain covariate such as "sex" or "date of experiment", you might want to correct for this. For known batch effects, such as sequencing day or sex, you may want to try to include the variance explained by this covariate in your later differential gene expression analysis as a co-factor. 
 
-<!-- Here, we check on a PCA what influence the SVA has on the clustering of the samples. -->
-<!-- ```{r} -->
-<!-- Limma_batch(model=model.matrix(~sample_table$condition), -->
-<!--             batch=sample_table[grep("SV",colnames(sample_table))], -->
-<!--             batch_2=NULL, -->
-<!--             shape_opt="NULL", -->
-<!--             ntop=500, PC_1=1, PC_2=2, -->
-<!--             color_obj=sample_table$Genotype_Age, -->
-<!--             anno_colour=Genotype_Age, -->
-<!--             continuous=F, -->
-<!--             colour_gradient=redblue(100), -->
-<!--             point_size=3) -->
-<!-- ``` -->
+To check whether removing the variance caused by this covariate improves the clustering of your samples, you can correct your gene expression for this factor using limma and plot a PCA of the corrected data.
 
-<!-- ##### SVA into design formula -->
+(https://bioconductor.org/packages/release/bioc/html/limma.html)
 
-<!-- To exclude the variance explained by the batch in your later analysis, you may enter the calculated SVs to the sample_table within the DESeq2 object as well. -->
-<!-- ```{r} -->
-<!-- for (i in 1:ncol(svseq$sv)) { -->
-<!--   dds[[paste0("SV",i)]]<- svseq$sv[, i] -->
-<!-- } -->
-<!-- ``` -->
+```{r}
+removedbatch_dds_vst <- limmaBatchEffectRemoval(input=dds_vst,
+                                                   modelfactor = "Genotype_Age",
+                                                   batchfactor = "Sex",
+                                                   batchfactor_2 = NULL)
+plotPCA(pca_input = removedbatch_dds_vst,
+         ntop="all", 
+         xPC=1,
+         yPC=2,
+         color="Genotype_Age",
+         anno_colour = col_genotype_age,
+         shape="Sex",
+         point_size=3,
+         title="PCA of batch-corrected counts")
+```
 
-<!-- In case you want to include the found batch variable (no matter if SV or a known covariate from you sample_table) you can include these in your design formlua in front of the condition of interest and recalculate your dds object. -->
-<!-- In the following expample we will not include a batch effect.  -->
-<!-- ```{r} -->
-<!-- #design(dds) <- ~ SV1 + SV2 + SV3 + SV4 + SV5 + SV6 + SV7 + merged -->
-<!-- #design <- design(dds) -->
+## SVA: Unknown batch effects
 
-<!-- #dds %<>% DESeq -->
-<!-- ``` -->
-<!-- In this step we may also generate a batch-corrected table of the normalized expression of all genes derived from running Limma on the rlog transformed data. -->
+In case your samples do not cluster according to the condition of biological interested, but you observe distinct clustering according to an unknown latent variable, you may want to try identifying this "hidden"" batch variable using surrogate variable analysis (SVA). 
 
-<!-- To generate the batch-corrected expression table you need to set the columns from sample_table that explain the batch in "batch". For numeric batches (e.g. SVA) you can set multiple columns in the "batch" (e.g.: sample_table[c("total_reads","pseudoaligned_reads","not_pseudoaligned_reads","percent_aligned")]). For factors you can set maximally 2 columns (one in "batch": sample_table[c("age")] and one in "batch_2": sample_table$Genotype_Age). If you have no second "batch_2" parameter, just leave it as NULL. -->
+The SVA package helps to define the variance in the data set that is not explained by your variables of interest and tries to model the respective surrogate variables. These surrogate variables can be included as factors in your DESeq2 model. (http://master.bioconductor.org/packages/release/workflows/html/rnaseqGene.html#removing-hidden-batch-effects; http://journals.plos.org/plosgenetics/article?id=10.1371/journal.pgen.0030161)
 
-<!-- ```{r} -->
-<!-- dds_vst_f <- varStab(blind_param = F) -->
-<!-- dds_vst_f_df <- as.data.frame(assay(dds_vst_f)) -->
-<!-- dds_batch_corrected_log2 <- removeBatchEffect_function(x=dds_vst_f_df,batch =sample_table[c("age")],batch_2=NULL,model =model.matrix(~sample_table$condition)) -->
-<!-- # transform log2 values to non-log transformed counts -->
-<!-- dds_batch_corrected <-dds_batch_corrected_log2 -->
-<!-- dds_batch_corrected[1:ncol(dds_batch_corrected)]<- lapply(dds_batch_corrected,logratio2foldchange) -->
-<!-- # add the gene annotations to the table -->
-<!-- dds_batch_corrected$ENS_ID <- row.names(dds_batch_corrected) # ensembl-IDs as row names -->
-<!-- dds_batch_corrected <- merge(dds_batch_corrected, gene_annotation[!duplicated(gene_annotation$GENEID),c("GENEID", "SYMBOL", "GENETYPE")], by.y = "GENEID", by.x = "ENS_ID", all.x = F)  -->
-<!-- rownames(dds_batch_corrected) <- dds_batch_corrected$ENS_ID -->
-<!-- ``` -->
+The goal of the sva is to remove all unwanted sources of variation while protecting the contrasts due to the primary variables. This leads to the identification of features that are consistently different between groups, removing all common sources of latent variation. In some cases, the latent variables may be important sources of biological vari-
+ability. If the goal of the analysis is to identify heterogeneity in one or more subgroups, the sva function may not be appropriate.  
+
+The first step in using the sva package is to properly format the data and create appropriate model matrices. The data should be a matrix with features (genes, transcripts, voxels) in the rows and samples in the columns. Below we obtain a matrix of normalized counts for which the average count across samples is larger than 1. This is the typical genes by samples matrix found in gene expression analyses. The sva package assumes there are two types of variables that are being considered: (1) adjustment variables and (2) variables of interest. For example, in a gene expression study the variable of interest might an indicator of cancer versus control. The adjustment variables could be the age of the patients, the sex of the patients, and a variable like the date the arrays were processed.
+
+Two model matrices must be made: the “full model” and the “null model”. The null model is a model matrix that includes terms for all of the adjustment variables but not the variables of interest. The full model includes terms for both the adjustment variables and the variables of interest. The assumption is that you will be trying to analyze the association between the variables of interest and gene expression, adjusting for the adjustment variables. The model matrices can be created using the model.matrix() function.
+
+After the model matrices have been created, we can apply the svaseq function to estimate batch and other artifacts. 
+
+The svaseq function performs two different steps. First it identifies the number of latent factors that need to be estimated. If the sva function is called without the n.sv argument specified, the number of factors will be estimated for you. 
+
+```{r}
+# Format and filter the input
+dat <- counts(dds, normalized=TRUE)
+idx <- rowMeans(dat) > 1
+dat <- dat[idx,]
+
+# Create the full model matrix - including both the adjustment variables and the variable of interest.  In this case we only have one variable of interest called Genotype_Age.
+mod  <- model.matrix(~ Genotype_Age, colData(dds))
+
+# The null model contains only the adjustment variables. Since we are not adjusting for any other variables in this analysis, only an intercept is included in the model.
+mod0 <- model.matrix(~   1, colData(dds))
+```
+
+Apply the svaseq() function to estimate the surrogate variables:
+
+The svaseq function returns a list with four components, sv, pprob.gam, pprob.b, n.sv:
+
+sv is a matrix whose columns correspond to the estimated surrogate variables. They can be used in downstream analyses as described below. 
+pprob.gam is the posterior probability that each gene is associated with one or more latent variables.
+pprob.b is the posterior probability that each gene is associated with the variables of interest.
+n.sv is the number of surrogate variables estimated by the sva.
 
 
-# Differential Expression Analysis
+```{r}
+svseq <- svaseq(dat,
+               mod,
+               mod0)
+
+svseq$sv
+```
+
+Add surrogate variables to annotation table to re-analyse the data including the surrogate variables in the analysis.
+
+```{r}
+for (i in 1:ncol(svseq$sv)) {
+  sample_table[[paste0("SV",i)]]<- svseq$sv[,i]
+}
+```
+
+
+Again, we can check in a PCA what an influence removing the SVs has on the clustering of the samples.
+
+```{r}
+removedbatch_dds_vst <- limmaBatchEffectRemoval(input=dds_vst,
+                                                modelfactor = "Genotype_Age",
+                                                batchfactor = c("SV1","SV2","SV3"),
+                                                batchfactor_2 = NULL)
+
+plotPCA(pca_input = removedbatch_dds_vst,
+         ntop="all",
+         xPC=1,
+         yPC=2,
+         color="Genotype_Age",
+         anno_colour = col_genotype_age,
+         point_size=3,
+         title="PCA of batch-corrected counts")
+```
+
+## Include batch effect variables into DESeq2 model
+
+In case you want to include the observed batch variables in your DESeq2 model, no matter if known covariates or surrogate variables, you can add these to your design formlua in front of the condition of interest and recalculate your dds object.
+In the following expample we will include a Sex and three SVs as batch effects.
+
+**ATTENTION: Skip this chunk, if you do not want to include any batch variables!**
+
+```{r}
+# ddssva <- dds
+# ddssva$SV1 <- svseq$sv[,1]
+# ddssva$SV2 <- svseq$sv[,2]
+# ddssva$SV3 <- svseq$sv[,3]
+# design(ddssva) <- ~ SV1 + SV2 + SV3 + Genotype_Age
+# 
+# dds <- DESeq(ddssva)
+```
+
+# 8. Differential Expression Analysis
 
 After the DESeq() function performs the standard differential expression analysis steps, DESeq2's results() function can extract a result table from the DESeqDataSet giving base means across samples, log2 fold changes, standard errors, test statistics, p-values and adjusted p-values.
 
-We have written a function called DEAnalysis() that runs DESeq2's results() and the lfcShrink() function with specified parameters on a set of pre-defined comparisons and returns a single results_object containing the respective result tables together with additional lists of the significant DE genes and the number of DE genes found.
+We have written a function called DEAnalysis() that runs DESeq2's results() and the lfcShrink() function with specified parameters on a set of pre-defined comparisons and returns a single DEresults object containing the respective result tables together with additional lists of the significant DE genes and the number of DE genes found.
 
 The parameters of the DEAnalysis function are: 
 
-  1) condition: specify the condition that you are testing, e.g. treatment or genotype. This value must correspond to the                    column in the colData listing the factors you are comparing and the design formula. 
+  1) condition: specify the condition that you are testing, e.g. treatment or genotype. This value must correspond to the column in the colData listing the factors you are comparing and the design formula. 
 
   2) alpha:  a significance cutoff used for optimizing the independent filtering.(default= 0.05)
   
-  3) lfcThreshold: a non-negative value which specifies a log2 fold change threshold. The default value is 0, corresponding                     to a test that the log2 fold changes are equal to zero. (default = 0)
+  3) lfcThreshold: a non-negative value which specifies a log2 fold change threshold. The default value is 0, corresponding to a test that the log2 fold changes are equal to zero. (default = 0)
   
   4) sigFC: post testing significance criteria as a non-negative, non-log transformed FC cutoff (default = 2)
   
-  5) multiple_testing: By default independent hypothesis weighting will be used as the multiple testing method              
-                      (https://bioconductor.org/packages/3.7/bioc/vignettes/IHW/inst/doc/introduction_to_ihw.html). However,                       you can also edit the multiple testing method by setting the multiple_testing parameter to "holm",                           "hochberg", "hommel", "bonferroni", "BH", "BY",or "fdr", which will perform independent filtering and                        p-value adjustment according to the specified method. (default = "IHW")
+  5) multiple_testing: By default independent hypothesis weighting will be used as the multiple testing method (https://bioconductor.org/packages/3.7/bioc/vignettes/IHW/inst/doc/introduction_to_ihw.html). However, you can also edit the multiple testing method by setting the multiple_testing parameter to "holm", "hochberg", "hommel", "bonferroni", "BH", "BY",or "fdr", which will perform independent filtering and p-value adjustment according to the specified method. (default = "IHW")
   
-  6) shrinkage: After calculating differential expression statistics, we can perform a so-called log2 fold change shrinkage.                 This shrinkage of effect size (LFC estimates) is useful for visualization and ranking of genes, as it which                  removes the noise associated with log2 fold changes from low count genes without requiring arbitrary                         filtering thresholds. To shrink the LFC, set shrinake = TRUE to pass the dds object to the function                          lfcShrink.  (default = TRUE)
+  6) shrinkage: After calculating differential expression statistics, we can perform a so-called log2 fold change shrinkage. This shrinkage of effect size (LFC estimates) is useful for visualization and ranking of genes, as it removes the noise associated with log2 fold changes from low count genes without requiring arbitrary filtering thresholds. To shrink the LFC, set shrinkage = TRUE to pass the dds object to the function lfcShrink.  (default = TRUE)
 
   7) shrinkType: The options for the shrinkage type are:
 
-    1) "normal" is the the original DESeq2 shrinkage estimator, an adaptive Normal distribution as prior.This is currently          the default, although the default will likely change to apeglm in the October 2018 release given apeglm’s superior           performance.
+    * "normal" is the the original DESeq2 shrinkage estimator, an adaptive Normal distribution as prior.This is currently the default, although the default will likely change to apeglm in the October 2018 release given apeglm’s superior           performance.
 
-    2) "apeglm" is the adaptive t prior shrinkage estimator from the apeglm package (Zhu, Ibrahim, and Love 2018).
+    * "apeglm" is the adaptive t prior shrinkage estimator from the apeglm package (Zhu, Ibrahim, and Love 2018).
 
-    3) "ashr" is the adaptive shrinkage estimator from the ashr package (Stephens 2016). Here DESeq2 uses the ashr option to        fit a mixture of Normal distributions to form the prior, with method="shrinkage".
+    * "ashr" is the adaptive shrinkage estimator from the ashr package (Stephens 2016). Here DESeq2 uses the ashr option to fit a mixture of Normal distributions to form the prior, with method="shrinkage".
 
 
 ## Define relevant comparisons
 
 Define your comparisons in a data.frame with "comparison" in the first column and "control" in the second column.
 
+comparison | control
+-----------|----------
+tg_4mo     | wt_4mo
+tg_8mo     | wt_8mo
+tg_12mo    | wt_12mo
+
 ```{r}
-comparison_table<-data.frame(comparison = c("tg_8mo","tg_4mo","tg_12mo"),
-                             control = c("wt_8mo","wt_4mo","wt_12mo"))
+comparison_table<-data.frame(comparison = c("tg_4mo","tg_8mo","tg_12mo"),
+                             control = c("wt_4mo","wt_8mo","wt_12mo"))
 ```
 
 
-### Creating your DE_object containing all the demanded comparisons
+## Perform Differential Expression Testing
 
 ```{r}
-results_object <- DEAnalysis(condition = "Genotype_Age",
+DEresults <- DEAnalysis(condition = "Genotype_Age",
                         alpha=0.05 ,
                         lfcThreshold= 0,
                         sigFC = 2,
@@ -1493,79 +2043,338 @@ results_object <- DEAnalysis(condition = "Genotype_Age",
                         shrinkType="normal")
 ```
 
-### Visualization of DE results
+### Summary of DE genes
+
+We use a for loop to print the number of significantly up- and down-regulated genes over all comparisons.
 
 ```{r}
+DEcounts <- NULL
 
+for(i in 1:nrow(comparison_table)){
+  tmp <- unlist(DEresults[[1+i]]@Number_DE_genes)
+  DEcounts <- rbind(DEcounts, tmp)
+}
+
+rownames(DEcounts) <- names(DEresults)[-1]
+
+DEcounts
+```
+
+## 8.1 General DE Gene analysis
+
+### Hierarchical Clustering of the union of DE genes 
+
+```{r, echo=TRUE, message=FALSE, results='hide', fig.height=10, fig.width=12}
+# the uDEG() function produces the union of the DE genes from the specified comparisons
+allDEgenes <- uDEG(comparisons=c("tg_4mo_vs_wt_4mo","tg_8mo_vs_wt_8mo","tg_12mo_vs_wt_12mo"))
+
+plotHeatmap(geneset = allDEgenes,
+            title = "Heatmap of all differentially expressed genes",
+            show_rownames = FALSE,
+            cluster_cols = TRUE)
+```
+
+### Hierarchical Clustering of differentially expressed Transcription Factors
+```{r, fig.height=16, fig.width=8}
+if(organism=="mouse"){
+  DE_TF <- allDEgenes[which(allDEgenes %in% norm_anno[norm_anno$SYMBOL %in% TFlist_mm,]$GENEID)]
+} else if(organism =="human"){
+  DE_TF <- allDEgenes[which(allDEgenes %in% norm_anno[norm_anno$SYMBOL %in% TFlist_hs,]$GENEID)]
+}
+
+plotHeatmap(geneset = DE_TF,
+                title = "Heatmap of all differentially expressed transcription factors",
+                show_rownames = TRUE,
+                cluster_cols = FALSE)
+```
+
+### Venn diagrams
+
+```{r, fig.height=10, fig.width=10}
+plotVenn(comparisons =  c("tg_4mo_vs_wt_4mo", "tg_8mo_vs_wt_8mo"),
+         regulation ="up")
+
+plotVenn(comparisons =  c("tg_12mo_vs_wt_12mo", "tg_8mo_vs_wt_8mo"))
 ```
 
 
-# Plotting the expression of a single gene across conditions
-Single genes can be observed. It is still of debate whether to use the normalized counts for this function or to use the batch-corrected counts as input. 
+### Ratio-Ratio plots of DE genes
+
+Ratio-Ratio plots help to compare the DE genes of two comparisons and are much more expressive than venn diagrams. 
+
 ```{r}
-plot_single_gene(input=norm_anno, # enter norm_anno to plot the normalized counts or dds_batch_corrected to plot the batch-corrected counts
-                 gene_symbol="Itgam", 
-                 condition="Genotype_Age",
-                 anno_colour=col_genotype_age,
-                 shape_opt= NULL)
-
-
-# norm_anno[which(duplicated(norm_anno$SYMBOL)),]$SYMBOL
+plotRatios(comp1 = "tg_4mo_vs_wt_4mo", 
+           comp2 = "tg_8mo_vs_wt_8mo")
+plotRatios(comp1 = "tg_8mo_vs_wt_8mo",
+           comp2 = "tg_12mo_vs_wt_12mo")
+plotRatios(comp1 = "tg_4mo_vs_wt_4mo",
+           comp2 = "tg_12mo_vs_wt_12mo")
 ```
 
-# Visualization of selected genes sets
+### GSEA across comparisons
 
-Choose a gene set from GO, KEGG or Hallmark and visualize the respective genes in a heatmap
+Define universe and gene sets for subsequent GSEA analyses.
 
-
-
-# Export
-
-## Count table as txt
-Exporting the annotated, normalized expression table:
 ```{r}
-write.table(norm_anno, 
-            paste(dir, "/Analysis/", "Tables/", "DESeq2norm_anno_filt_", Sys.Date(), ".txt", sep = ""), 
-            sep = "\t", 
-            quote = F, 
-            row.names = F)
+# define universe
+universe <- as.character(norm_anno$SYMBOL)
+# change symbols to ENTREZ IDs (necessary for ClusterProfiler)
+universe_Entrez <- bitr(universe, 
+                        fromType="SYMBOL", 
+                        toType="ENTREZID", 
+                        OrgDb="org.Mm.eg.db")$ENTREZID
+
+universe_mouse2human <- getLDS(attributes = c("mgi_symbol"), 
+                              filters = "mgi_symbol", 
+                              values = universe, 
+                              mart = useMart("ensembl", dataset = "mmusculus_gene_ensembl"), 
+                              attributesL = c("hgnc_symbol"), 
+                              martL = useMart("ensembl", dataset = "hsapiens_gene_ensembl"), 
+                              uniqueRows=T)[,2]
+
+universe_mouse2human_Entrez <- bitr(universe_mouse2human, 
+                        fromType="SYMBOL", 
+                        toType="ENTREZID", 
+                        OrgDb="org.Hs.eg.db")$ENTREZID
 ```
 
-## Count table, normalized table and stats as Excel sheet
-As an optimal output for cooperation partners we create an Excel sheet with the normalized table, the batch corrected table & the statistics of comparisons. The DE genes can be subsetted in the sheets by filtering for significance=T.
-Either the output can be an excel sheet with a tab for every comparison....
-```{r , echo=TRUE, message=FALSE}
-DESeq2_object<-createWorkbook(type="xlsx")
-sheet <- createSheet(DESeq2_object, sheetName = "Sample_table")
-addDataFrame(sample_table, sheet, startRow=1, startColumn=1)
-sheet <- createSheet(DESeq2_object, sheetName = "Annotated gene counts")
-addDataFrame(norm_anno, sheet, startRow=1, startColumn=1)
-sheet <- createSheet(DESeq2_object, sheetName = "Batch_corrected gene expression")
-addDataFrame(dds_batch_corrected, sheet, startRow=1, startColumn=1)
-for (i in 1:length(names(DE_object))) {
-  sheet <- createSheet(DESeq2_object, sheetName = paste(names(DE_object)[[i]]))
-  addDataFrame(DE_object[[i]]@results, sheet, startRow=1, startColumn=1)}
-saveWorkbook(DESeq2_object, file=file.path(dir, "Analysis", "Tables", "DESeq2_object.xlsx"))
+Next, we perform functional enrichment analysis based on Gene ontology and KEGG pathway enrichment across all comparisons tested to check for overlap in functional indications of the differentially regulated genes. 
+
+```{r, fig.height=8, fig.width=12, warnings=FALSE, message=FALSE}
+DEcompare <- compareGSEA(comparisons = c("tg_4mo_vs_wt_4mo","tg_8mo_vs_wt_8mo","tg_12mo_vs_wt_12mo"),
+                         organism = "mouse",
+                         GeneSets = c("GO", "KEGG"),
+                         pCorrection = "bonferroni", 
+                         pvalueCutoff = 0.05,
+                         qvalueCutoff = 0.05,
+                         showMax = 20, 
+                         ontology = "BP")
+
+DEcompare$GOplot
+DEcompare$KEGGplot
 ```
 
-or with all comparisons in one tab. 
+### Likelihood ratio test
+
+DESeq2 offers two kinds of hypothesis tests: the Wald test, where we use the estimated standard error of a log2 fold change to test if it is equal to zero, and the likelihood ratio test (LRT). The LRT examines two models for the counts, a full model with a certain number of terms and a reduced model, in which some of the terms of the full model are removed. The test determines if the increased likelihood of the data using the extra terms in the full model is more than expected if those extra terms are truly zero.
+
+**The LRT is therefore useful for testing multiple terms at once, for example testing 3 or more levels of a factor at once, or all interactions between two variables.** The LRT for count data is conceptually similar to an analysis of variance (ANOVA) calculation in linear regression, except that in the case of the Negative Binomial GLM, we use an analysis of deviance (ANODEV), where the deviance captures the difference in likelihood between a full and a reduced model.
+
+The likelihood ratio test can be performed by specifying test="LRT" when using the DESeq function, and providing a reduced design formula, e.g. one in which a number of terms from design(dds) are removed. The degrees of freedom for the test is obtained from the difference between the number of parameters in the two models. A simple likelihood ratio test, if the full design was ~Genotype_Age would look like:
+
 ```{r}
-DESeq2_object<-createWorkbook(type="xlsx")
-sheet <- createSheet(DESeq2_object, sheetName = "Sample_table")
-addDataFrame(sample_table, sheet, startRow=1, startColumn=1)
-sheet <- createSheet(DESeq2_object, sheetName = "Annotated gene counts")
-addDataFrame(norm_anno, sheet, startRow=1, startColumn=1)
-sheet <- createSheet(DESeq2_object, sheetName = "Batch_corrected gene expression")
-addDataFrame(dds_batch_corrected, sheet, startRow=1, startColumn=1)
-Results<-data.frame(DE_object[[1]]@results)
-for (i in 2:length(names(DE_object))) {
-  Results<-cbind(Results,DE_object[[i]]@results)}
-sheet <- createSheet(DESeq2_object, sheetName = "Results")
-addDataFrame(Results, sheet, startRow=1, startColumn=1)
-saveWorkbook(DESeq2_object, file=file.path(dir, "Analysis", "Tables", "DESeq2_object_combined.xlsx"))
+dds_lrt <- DESeq(dds, 
+                 test="LRT", 
+                 reduced=~1)
+
+res_lrt <- results(dds_lrt)
+
+# Plot heatmap of significantly different genes 
+lrt_significantGenes <- rownames(res_lrt[!is.na(res_lrt$padj)&
+                                           res_lrt$padj < 0.05 ,])
+plotHeatmap(geneset = lrt_significantGenes,
+                title = paste("Heatmap of all LRT-significant genes: ",length(lrt_significantGenes), sep=""),
+                show_rownames = FALSE,
+                cluster_cols = TRUE)
+
+# Plot heatmap of 1000 top significant genes
+lrt_1000mostvariableGenes <- head(rownames(res_lrt[order(res_lrt$padj),]),1000)
+
+plotHeatmap(geneset = lrt_1000mostvariableGenes,
+                title = "Heatmap of 1000 top significant LRT genes",
+                show_rownames = FALSE,
+                cluster_cols = TRUE)
 ```
 
-## Image and session Info
+
+## 8.2 Specific DE Gene analysis
+
+Now that we have had a global look at the differentially expressed genes, we want to have a more detailed look at specific comparisons. Therefore, we use various plots to get an impression of the differences in the specified comparisons.
+
+### MAplots
+
+A MAplot represents the average log expression versus the average ratio (or fold change) between two conditions.
+
+```{r}
+  plotMA(comparison = "tg_4mo_vs_wt_4mo",
+         ylim=c(-2,2))
+  plotMA(comparison = "tg_8mo_vs_wt_8mo",
+         ylim=c(-2,2))
+  plotMA(comparison = "tg_12mo_vs_wt_12mo",
+         ylim=c(-2,2))
+```
+
+### p value distributions
+
+We plot a histogram of the p-values resulting from testing the specified comparisons.
+
+To understand p-value distributions, this source is very helpful:
+http://varianceexplained.org/statistics/interpreting-pvalue-histogram/
+
+```{r}
+  plotPvalues(comparison="tg_4mo_vs_wt_4mo")
+  plotPvalues(comparison="tg_8mo_vs_wt_8mo")
+  plotPvalues(comparison="tg_12mo_vs_wt_12mo")
+```
+
+### Heatmaps of DE genes
+
+Plot heatmaps of the expression of the DE genes of the specified comparisons. The argument conditions allows to include samples from specified conditions in the heatmap.
+
+```{r}
+  plotDEHeatmap("tg_4mo_vs_wt_4mo",
+                factor="Genotype_Age",
+                conditions="all")
+  
+  plotDEHeatmap("tg_4mo_vs_wt_4mo",
+                factor="Genotype_Age",
+                conditions=c("tg_4mo","wt_4mo","wt_12mo"))
+  
+  plotDEHeatmap("tg_4mo_vs_wt_4mo",
+                factor="Genotype_Age",
+                conditions=c("tg_4mo","wt_4mo"))
+  
+  plotDEHeatmap("tg_8mo_vs_wt_8mo",
+                factor="Genotype_Age",
+                conditions=c("tg_8mo","wt_8mo"))
+  
+  plotDEHeatmap("tg_12mo_vs_wt_12mo",
+                factor="Genotype_Age",
+                conditions=c("tg_12mo","wt_12mo"))
+```
+
+### Volcano Plots
+
+A volcano plot is a type of scatter-plot that is used to quickly identify changes in large data sets composed of replicate data. It plots significance versus fold-change on the y and x axes, respectively. 
+
+```{r}
+# Plot Volcano Plot
+  plotVolcano(comparison= "tg_4mo_vs_wt_4mo",
+              labelnum=20)
+  plotVolcano(comparison= "tg_8mo_vs_wt_8mo",
+              labelnum=20)
+  plotVolcano(comparison= "tg_12mo_vs_wt_12mo",
+              labelnum=20)
+```
+
+### Gene Set Enrichment of DE genes
+
+Next, we perform gene set enrichment analyses of the DE genes of the specified comparisons. 
+
+6 gene sets are available:
+  * GO
+  * KEGG
+  * MSigDB Hallmark (H)
+  * MSigDB Cannonical Pathways (C2) *Gene sets from pathway databases. Usually, these gene sets are canonical representations of a biological process compiled by domain experts.*  
+  * MSigDB Motifs (C3, DNA binding motifs) *Gene sets representing potential targets of regulation by transcription factors or microRNAs. The sets consist of genes grouped by short sequence motifs they share in their non-protein coding regions. The motifs represent known or likely cis-regulatory elements in promoters and 3'-UTRs. The C3 collection is divided into two sub-collections: MIR and TFT*  
+  * MSigDB Immunologic gene sets (C7) *Gene sets that represent cell states and perturbations within the immune system. The signatures were generated by manual curation of published studies in human and mouse immunology.*
+
+```{r}
+GSEA_tg_4mo_vs_wt_4mo <-  GSEA(comparison="tg_4mo_vs_wt_4mo",
+                                 organism="mouse",
+                                 GeneSets = c("GO",
+                                              "KEGG",
+                                              "Hallmark",
+                                              "cannonicalPathways",
+                                              "Motifs",
+                                              "ImmunoSignatures"),
+                                 GOntology = "BP",
+                                 pCorrection = "bonferroni", # choose the p-value adjustment method
+                                 pvalueCutoff = 0.05, # set the unadj. or adj. p-value cutoff (depending on correction method)
+                                 qvalueCutoff = 0.05, # set the q-value cutoff (FDR corrected)
+                                 showMax = 20,
+                                 font.size = 8)
+
+GSEA_tg_4mo_vs_wt_4mo$GOup_plot
+GSEA_tg_4mo_vs_wt_4mo$KEGGup_plot
+GSEA_tg_4mo_vs_wt_4mo$HALLMARKup_plot
+GSEA_tg_4mo_vs_wt_4mo$ImmSigup_plot
+
+GSEA_tg_8mo_vs_wt_8mo <-  GSEA(comparison="tg_8mo_vs_wt_8mo",
+                                 organism="mouse",
+                                 GeneSets =c("GO","KEGG","Hallmark","Motifs","ImmunoSignatures"),
+                                 GOntology = "BP",
+                                 pCorrection = "bonferroni", # choose the p-value adjustment method
+                                 pvalueCutoff = 0.05, # set the unadj. or adj. p-value cutoff (depending on correction method)
+                                 qvalueCutoff = 0.05, # set the q-value cutoff (FDR corrected)
+                                 showMax = 20,
+                                 font.size = 8)
+
+GSEA_tg_8mo_vs_wt_8mo$KEGG_down
+
+GSEA_tg_12mo_vs_wt_12mo <-  GSEA(comparison="tg_12mo_vs_wt_12mo",
+                                 organism="mouse",
+                                 GeneSets =c("GO","KEGG","Hallmark","Motifs","ImmunoSignatures"),
+                                 GOntology = "BP",
+                                 pCorrection = "bonferroni", # choose the p-value adjustment method
+                                 pvalueCutoff = 0.05, # set the unadj. or adj. p-value cutoff (depending on correction method)
+                                 qvalueCutoff = 0.05, # set the q-value cutoff (FDR corrected)
+                                 showMax = 20,
+                                 font.size = 8)
+
+GSEA_tg_12mo_vs_wt_12mo$KEGGdown
+```
+
+#### Heatmaps of GSEA result responsible genes
+
+```{r}
+plotGSEAHeatmap(GSEA_result = GSEA_tg_4mo_vs_wt_4mo$GOup, 
+              GeneSet="GO", 
+              term = "cytoplasmic translation")
+
+plotGSEAHeatmap(GSEA_result = GSEA_tg_4mo_vs_wt_4mo$KEGGup, 
+              GeneSet="KEGG", 
+              term = "Ribosome")
+
+```
+
+# 9. Export
+
+<!-- ## Count table as txt file -->
+<!-- Exporting the annotated, normalized expression table: -->
+<!-- ```{r} -->
+<!-- write.table(norm_anno, -->
+<!--             paste(dir, "/Analysis/", "Tables/", "DESeq2norm_anno_filt_", Sys.Date(), ".txt", sep = ""), -->
+<!--             sep = "\t", -->
+<!--             quote = F, -->
+<!--             row.names = F) -->
+<!-- ``` -->
+
+<!-- ## Count table, normalized table and stats as Excel sheet -->
+<!-- As an optimal output for cooperation partners we create an Excel sheet with the normalized table, the batch corrected table & the statistics of comparisons. The DE genes can be subsetted in the sheets by filtering for significance=T. -->
+<!-- Either the output can be an excel sheet with a tab for every comparison.... -->
+<!-- ```{r , echo=TRUE, message=FALSE} -->
+<!-- DESeq2_object<-createWorkbook(type="xlsx") -->
+<!-- sheet <- createSheet(DESeq2_object, sheetName = "Sample_table") -->
+<!-- addDataFrame(sample_table, sheet, startRow=1, startColumn=1) -->
+<!-- sheet <- createSheet(DESeq2_object, sheetName = "Annotated gene counts") -->
+<!-- addDataFrame(norm_anno, sheet, startRow=1, startColumn=1) -->
+<!-- sheet <- createSheet(DESeq2_object, sheetName = "Batch_corrected gene expression") -->
+<!-- addDataFrame(dds_batch_corrected, sheet, startRow=1, startColumn=1) -->
+<!-- for (i in 1:length(names(DE_object))) { -->
+<!--   sheet <- createSheet(DESeq2_object, sheetName = paste(names(DE_object)[[i]])) -->
+<!--   addDataFrame(DE_object[[i]]@results, sheet, startRow=1, startColumn=1)} -->
+<!-- saveWorkbook(DESeq2_object, file=file.path(dir, "Analysis", "Tables", "DESeq2_object.xlsx")) -->
+<!-- ``` -->
+
+<!-- or with all comparisons in one tab.  -->
+<!-- ```{r} -->
+<!-- DESeq2_object<-createWorkbook(type="xlsx") -->
+<!-- sheet <- createSheet(DESeq2_object, sheetName = "Sample_table") -->
+<!-- addDataFrame(sample_table, sheet, startRow=1, startColumn=1) -->
+<!-- sheet <- createSheet(DESeq2_object, sheetName = "Annotated gene counts") -->
+<!-- addDataFrame(norm_anno, sheet, startRow=1, startColumn=1) -->
+<!-- sheet <- createSheet(DESeq2_object, sheetName = "Batch_corrected gene expression") -->
+<!-- addDataFrame(dds_batch_corrected, sheet, startRow=1, startColumn=1) -->
+<!-- Results<-data.frame(DE_object[[1]]@results) -->
+<!-- for (i in 2:length(names(DE_object))) { -->
+<!--   Results<-cbind(Results,DE_object[[i]]@results)} -->
+<!-- sheet <- createSheet(DESeq2_object, sheetName = "Results") -->
+<!-- addDataFrame(Results, sheet, startRow=1, startColumn=1) -->
+<!-- saveWorkbook(DESeq2_object, file=file.path(dir, "Analysis", "Tables", "DESeq2_object_combined.xlsx")) -->
+<!-- ``` -->
+
+# Save image and session Info
 ```{r}
 save.image(paste(dir, "/Analysis/", Sys.Date(), "_Image.RData", sep = ""))
 sessionInfo()
