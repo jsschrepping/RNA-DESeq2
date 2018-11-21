@@ -15,6 +15,9 @@ output:
 First, we install all necessary CRAN and Bioconductor packages and load them into the session.
 
 ```{r load packages, results='hide',message=FALSE,warning=FALSE}
+# increase java heap size for export as excel
+options(java.parameters = "-Xmx16000m") 
+
 # CRAN packages
 list.of.packages <- c("hwriter",
                       "RColorBrewer",
@@ -2330,32 +2333,52 @@ plotGSEAHeatmap(GSEA_result = GSEA_tg_4mo_vs_wt_4mo$KEGGup,
 
 # 9. Export
 
-<!-- ## Count table as txt file -->
-<!-- Exporting the annotated, normalized expression table: -->
-<!-- ```{r} -->
-<!-- write.table(norm_anno, -->
-<!--             paste(dir, "/Analysis/", "Tables/", "DESeq2norm_anno_filt_", Sys.Date(), ".txt", sep = ""), -->
-<!--             sep = "\t", -->
-<!--             quote = F, -->
-<!--             row.names = F) -->
-<!-- ``` -->
+## Count table as txt file
+Exporting the annotated, normalized expression table:
+```{r}
+write.table(norm_anno,
+            paste(dir, "/Analysis/", "Tables/", "DESeq2_norm_anno_", Sys.Date(), ".txt", sep = ""),
+            sep = "\t",
+            quote = F,
+            row.names = F)
+```
 
-<!-- ## Count table, normalized table and stats as Excel sheet -->
-<!-- As an optimal output for cooperation partners we create an Excel sheet with the normalized table, the batch corrected table & the statistics of comparisons. The DE genes can be subsetted in the sheets by filtering for significance=T. -->
-<!-- Either the output can be an excel sheet with a tab for every comparison.... -->
-<!-- ```{r , echo=TRUE, message=FALSE} -->
-<!-- DESeq2_object<-createWorkbook(type="xlsx") -->
-<!-- sheet <- createSheet(DESeq2_object, sheetName = "Sample_table") -->
-<!-- addDataFrame(sample_table, sheet, startRow=1, startColumn=1) -->
-<!-- sheet <- createSheet(DESeq2_object, sheetName = "Annotated gene counts") -->
-<!-- addDataFrame(norm_anno, sheet, startRow=1, startColumn=1) -->
-<!-- sheet <- createSheet(DESeq2_object, sheetName = "Batch_corrected gene expression") -->
-<!-- addDataFrame(dds_batch_corrected, sheet, startRow=1, startColumn=1) -->
-<!-- for (i in 1:length(names(DE_object))) { -->
-<!--   sheet <- createSheet(DESeq2_object, sheetName = paste(names(DE_object)[[i]])) -->
-<!--   addDataFrame(DE_object[[i]]@results, sheet, startRow=1, startColumn=1)} -->
-<!-- saveWorkbook(DESeq2_object, file=file.path(dir, "Analysis", "Tables", "DESeq2_object.xlsx")) -->
-<!-- ``` -->
+## Count table, normalized table and stats as Excel sheet
+
+As an optimal output for cooperation partners, we create an Excel workbook with the normalized count table, the rlog-transformed counts, the DE test parameters & the statistics of the respective differential expression tests. 
+
+```{r , echo=TRUE, message=FALSE}
+ExcelOutput<-createWorkbook(type="xlsx")
+# add sample table
+sheet <- createSheet(ExcelOutput, sheetName = "Samples")
+addDataFrame(sample_table, sheet, startRow=1, startColumn=1, row.names = FALSE)
+# add normalized counts
+tmp <- norm_anno
+tmp$LRT_padj <- res_lrt$padj
+sheet <- createSheet(ExcelOutput, sheetName = "Normalized counts & Annotation")
+addDataFrame(tmp, sheet, startRow=1, startColumn=1, row.names = FALSE)
+# add variance-stabilized counts
+tmp <- as.data.frame(assay(dds_vst))
+tmp$GENEID <- norm_anno$GENEID
+tmp$SYMBOL <- norm_anno$SYMBOL
+sheet <- createSheet(ExcelOutput, sheetName = "Variance-stabilized counts")
+addDataFrame(tmp, sheet, startRow=1, startColumn=1, row.names = FALSE)
+# add DE test parameters
+tmp <- stack(unlist(DEresults$parameters))
+colnames(tmp)<-c("value","parameter")
+sheet <- createSheet(ExcelOutput, sheetName = "DE parameters")
+addDataFrame(tmp, sheet, startRow=1, startColumn=1, row.names = FALSE)
+# add DE results
+for(i in 2:length(names(DEresults))){
+  sheet <- createSheet(ExcelOutput, sheetName = names(DEresults[i]))
+  addDataFrame(DEresults[[i]]@results, sheet, startRow=1, startColumn=1, row.names = FALSE)
+  sheet <- createSheet(ExcelOutput, sheetName = paste(names(DEresults[i]),"_upDEGs"))
+  addDataFrame(DEresults[[i]]@DE_genes$up_regulated_Genes, sheet, startRow=1, startColumn=1, row.names = FALSE)
+  sheet <- createSheet(ExcelOutput, sheetName = paste(names(DEresults[i]),"_downDEGs"))
+  addDataFrame(DEresults[[i]]@DE_genes$down_regulated_Genes, sheet, startRow=1, startColumn=1, row.names = FALSE)
+  }
+saveWorkbook(ExcelOutput, file=paste(dir, "/Analysis/Tables/AnalysisOutput_", Sys.Date(), ".xlsx",sep=""))
+```
 
 <!-- or with all comparisons in one tab.  -->
 <!-- ```{r} -->
