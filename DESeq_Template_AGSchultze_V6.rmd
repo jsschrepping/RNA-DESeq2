@@ -2368,7 +2368,21 @@ tmp <- stack(unlist(DEresults$parameters))
 colnames(tmp)<-c("value","parameter")
 sheet <- createSheet(ExcelOutput, sheetName = "DE parameters")
 addDataFrame(tmp, sheet, startRow=1, startColumn=1, row.names = FALSE)
-# add DE results
+# add combined DE results
+cResults <- NULL
+for (i in 2:length(names(DEresults))) {
+  if(i == 2){
+    cResults<-data.frame(DEresults[[i]]@results[,c("GENEID","SYMBOL","baseMean","log2FoldChange","padj","regulation")])
+    colnames(cResults)[4:6]<- paste(names(DEresults)[i],colnames(cResults)[4:6],sep="_")
+  }else{
+    tmp<-data.frame(DEresults[[i]]@results[,c("log2FoldChange","padj","regulation")])
+    colnames(tmp)<- paste(names(DEresults)[i],colnames(tmp),sep="_")    
+    cResults<-cbind(cResults,tmp)
+  }
+}
+sheet <- createSheet(ExcelOutput, sheetName = "combined DE Results")
+addDataFrame(cResults, sheet, startRow=1, startColumn=1,row.names=FALSE)
+# add DE results in single sheets
 for(i in 2:length(names(DEresults))){
   sheet <- createSheet(ExcelOutput, sheetName = names(DEresults[i]))
   addDataFrame(DEresults[[i]]@results, sheet, startRow=1, startColumn=1, row.names = FALSE)
@@ -2380,24 +2394,7 @@ for(i in 2:length(names(DEresults))){
 saveWorkbook(ExcelOutput, file=paste(dir, "/Analysis/Tables/AnalysisOutput_", Sys.Date(), ".xlsx",sep=""))
 ```
 
-<!-- or with all comparisons in one tab.  -->
-<!-- ```{r} -->
-<!-- DESeq2_object<-createWorkbook(type="xlsx") -->
-<!-- sheet <- createSheet(DESeq2_object, sheetName = "Sample_table") -->
-<!-- addDataFrame(sample_table, sheet, startRow=1, startColumn=1) -->
-<!-- sheet <- createSheet(DESeq2_object, sheetName = "Annotated gene counts") -->
-<!-- addDataFrame(norm_anno, sheet, startRow=1, startColumn=1) -->
-<!-- sheet <- createSheet(DESeq2_object, sheetName = "Batch_corrected gene expression") -->
-<!-- addDataFrame(dds_batch_corrected, sheet, startRow=1, startColumn=1) -->
-<!-- Results<-data.frame(DE_object[[1]]@results) -->
-<!-- for (i in 2:length(names(DE_object))) { -->
-<!--   Results<-cbind(Results,DE_object[[i]]@results)} -->
-<!-- sheet <- createSheet(DESeq2_object, sheetName = "Results") -->
-<!-- addDataFrame(Results, sheet, startRow=1, startColumn=1) -->
-<!-- saveWorkbook(DESeq2_object, file=file.path(dir, "Analysis", "Tables", "DESeq2_object_combined.xlsx")) -->
-<!-- ``` -->
-
-# Save image and session Info
+# 10. Save image and session Info
 ```{r}
 save.image(paste(dir, "/Analysis/", Sys.Date(), "_Image.RData", sep = ""))
 sessionInfo()
