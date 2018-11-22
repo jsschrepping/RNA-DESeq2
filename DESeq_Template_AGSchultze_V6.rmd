@@ -95,7 +95,7 @@ lapply(c(list.of.packages,list.of.bioc.packages), require, character.only = TRUE
 
 We define functions used for analysis and visualization of our data.
 
-```{r global functions, hide = T, cache = T}
+```{r global functions, hide = T}
 # Function to create breaks and colour vectors scaled to 0 (middle) and a specified upper and lower bound value
 scaleColors <- function(data = input_scale, # data to use
                         maxvalue = NULL # value at which the color is fully red / blue
@@ -1912,7 +1912,7 @@ Two model matrices must be made: the “full model” and the “null model”. 
 
 After the model matrices have been created, we can apply the svaseq function to estimate batch and other artifacts. 
 
-The svaseq function performs two different steps. First it identifies the number of latent factors that need to be estimated. If the sva function is called without the n.sv argument specified, the number of factors will be estimated for you. 
+The svaseq function performs two different steps. First it identifies the number of latent factors that need to be estimated. If the sva function is called without the n.sv argument specified, the number of factors will be estimated for you. If you prefer a specific number of SVs, you can set the n.sv parameter accordingly.
 
 ```{r}
 # Format and filter the input
@@ -1944,6 +1944,24 @@ svseq <- svaseq(dat,
 
 svseq$sv
 ```
+
+You can display whether the calculated SV correlate with any of your known covariates by changing dds$condition to the column of your sample_table that you are interested in.
+```{r, fig.width=8, fig.height=6}
+par(mfrow = c(2, ncol(svseq$sv)))
+
+condition ="Sex"
+for (i in 1:ncol(svseq$sv)) {
+  stripchart(svseq$sv[, i] ~ dds[[condition]], vertical = TRUE, main = paste0("SV", i))
+  abline(h = 0)
+}
+
+condition ="Mouse_ID"
+for (i in 1:ncol(svseq$sv)) {
+  stripchart(svseq$sv[, i] ~ dds[[condition]], vertical = TRUE, main = paste0("SV", i))
+  abline(h = 0)
+}
+```
+
 
 Add surrogate variables to annotation table to re-analyse the data including the surrogate variables in the analysis.
 
@@ -2343,7 +2361,7 @@ write.table(norm_anno,
             row.names = F)
 ```
 
-## Count table, normalized table and stats as Excel sheet
+## Export as Excel sheet
 
 As an optimal output for cooperation partners, we create an Excel workbook with the normalized count table, the rlog-transformed counts, the DE test parameters & the statistics of the respective differential expression tests. 
 
