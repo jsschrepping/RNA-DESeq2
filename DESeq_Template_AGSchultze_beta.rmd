@@ -94,7 +94,11 @@ lapply(c(list.of.packages,list.of.bioc.packages), require, character.only = TRUE
 
 ## Custom functions
 
-We define functions used for analysis and visualization of our data.
+We define functions used for analysis and visualization of our data. All of our plots are based on ggplot2, so you can add different themes our change scales, etc. 
+E.g.: DEcompare$KEGGplot+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  
+  to make the axis texts vertically. 
 
 ```{r global functions, hide = T}
 # Function to create breaks and colour vectors scaled to 0 (middle) and a specified upper and lower bound value
@@ -2168,6 +2172,7 @@ universe_mouse2human_Entrez <- bitr(universe_mouse2human,
 
 Next, we perform functional enrichment analysis based on Gene ontology and KEGG pathway enrichment across all comparisons tested to check for overlap in functional indications of the differentially regulated genes. 
 
+
 ```{r, fig.height=8, fig.width=12, warnings=FALSE, message=FALSE}
 DEcompare <- compareGSEA(comparisons = c("tg_4mo_vs_wt_4mo","tg_8mo_vs_wt_8mo","tg_12mo_vs_wt_12mo"),
                          organism = "mouse",
@@ -2179,7 +2184,7 @@ DEcompare <- compareGSEA(comparisons = c("tg_4mo_vs_wt_4mo","tg_8mo_vs_wt_8mo","
                          ontology = "BP")
 
 DEcompare$GOplot
-DEcompare$KEGGplot
+DEcompare$KEGGplot 
 ```
 
 ### Likelihood ratio test
