@@ -356,8 +356,8 @@ multiplot<-function(plots=plots,
 # Function to plot the normalized or batch-corrected counts for a single gene in a box plot
 plotSingleGene <-function(data=norm_anno, 
                             symbol, 
-                            condition="Genotype_Age", 
-                            anno_colour=col_genotype_age,
+                            condition="Genotype_Stim", 
+                            anno_colour=col_genotype_stim,
                             shape = NULL) {
   
   input<-as.data.frame(data)
@@ -369,7 +369,12 @@ plotSingleGene <-function(data=norm_anno,
     plots<-list()
     for (i in 1:sum(input$SYMBOL == symbol)) {
       geneCounts <- as.data.frame(t(input[input$SYMBOL == symbol, colnames(input) %in% sample_table$ID]))
-      geneCounts$condition <- sample_table[[condition]]
+      geneCounts$ID<-rownames(geneCounts)
+      sample_tab<-sample_table[,c("ID",condition)]
+      colnames(sample_tab)<-c("ID","condition")
+      geneCounts<-merge(geneCounts,sample_tab)
+      geneCounts$ID<-NULL
+      GENEID<-colnames(geneCounts)[i]
       GENEID<-colnames(geneCounts)[i]
       colnames(geneCounts)[i]<-"y"
       
