@@ -1491,7 +1491,7 @@ as a matrix, which is then used as an offset for different expression of gene-le
 
 ```{r kallisto import}
 # Define path where the Kallisto files are stored
-files <- paste(dir, "/Data/output/kallisto/kallisto/", samples_to_keep, "/abundance.h5", sep = "")
+files <- paste(dir, "/Data/output/kallisto/kallisto/", sample_table$ID, "/abundance.h5", sep = "")
 # Naming the entries in the vector assures correct column names in the expression tables
 names(files) <- sample_table$ID
 # Import samples and perform the distribution of transcripts to genes
