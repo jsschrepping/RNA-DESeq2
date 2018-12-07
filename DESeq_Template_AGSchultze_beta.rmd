@@ -291,10 +291,10 @@ plotPCA <- function(pca_input = dds_vst,
       }
   }
 
-      # adds a label to the plot. To label only specific points, put them in the arument label_subset
+# adds a label to the plot. To label only specific points, put them in the arument label_subset
   if (!is.null(label) == TRUE){
     pcaData$label <- sample_table[[label]]
-    if(!is.null(subset) == TRUE){
+    if(!is.null(label_subset) == TRUE){
     pcaData_labeled <- pcaData[pcaData$label %in% label_subset,]
     } else {
       pcaData_labeled <- pcaData
