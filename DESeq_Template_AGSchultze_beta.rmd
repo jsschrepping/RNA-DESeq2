@@ -20,7 +20,7 @@ First, we install all necessary CRAN and Bioconductor packages and load them int
 options(java.parameters = "-Xmx16000m") 
 
 # CRAN packages
-list.of.packages <- c("hwriter",
+list.of.packages <- c("ps","haven","hwriter",
                       "RColorBrewer",
                       "tidyverse",
                       "reshape2",
@@ -60,12 +60,12 @@ new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"
 if(length(new.packages)>0) install.packages(new.packages)
 
 # BioconductoR packages
-list.of.bioc.packages<- c("rhdf5",
+list.of.bioc.packages<- c("fgsea","GOSemSim","IRanges","BiocGenerics",
+                          "AnnotationDbi","S4Vectors","rhdf5",
                           "DESeq2",
                           "IHW",
                           "clusterProfiler",
                           "GSEABase",
-                          "AnnotationDbi",
                           "sva",
                           "tximport",
                           "limma",
@@ -82,7 +82,7 @@ list.of.bioc.packages<- c("rhdf5",
                           "limma", 
                           "DOSE",
                           "vsn",
-                          "ComplexHeatmap")
+                          "ComplexHeatmap","GenomicRanges","XVector")
 
 new.packages.bioc <- list.of.bioc.packages[!(list.of.bioc.packages %in% installed.packages()[,"Package"])]
 
