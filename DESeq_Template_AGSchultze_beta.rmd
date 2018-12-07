@@ -300,7 +300,7 @@ plotPCA <- function(pca_input = dds_vst,
       pcaData_labeled <- pcaData
     }
       pca_plot <- pca_plot + 
-      geom_text_repel(data = pcaData_labeled, aes(label = label), nudge_x = 2, nudge_y = 2) 
+      geom_text_repel(data = pcaData_labeled, aes(label = label), nudge_x = 2, nudge_y = 2, colour = "black") 
   }
   
     pca_plot <- pca_plot+
