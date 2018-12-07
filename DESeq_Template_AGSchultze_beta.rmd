@@ -2416,9 +2416,9 @@ addDataFrame(cResults, sheet, startRow=1, startColumn=1,row.names=FALSE)
 for(i in 2:length(names(DEresults))){
   sheet <- createSheet(ExcelOutput, sheetName = names(DEresults[i]))
   addDataFrame(DEresults[[i]]@results, sheet, startRow=1, startColumn=1, row.names = FALSE)
-  sheet <- createSheet(ExcelOutput, sheetName = paste(names(DEresults[i]),"_upDEGs"))
+  sheet <- createSheet(ExcelOutput, sheetName = paste(substr(names(DEresults[i]),1 , 22),"_upDEGs"))
   addDataFrame(DEresults[[i]]@DE_genes$up_regulated_Genes, sheet, startRow=1, startColumn=1, row.names = FALSE)
-  sheet <- createSheet(ExcelOutput, sheetName = paste(names(DEresults[i]),"_downDEGs"))
+  sheet <- createSheet(ExcelOutput, sheetName = paste(substr(names(DEresults[i]),1 , 20),"_downDEGs"))
   addDataFrame(DEresults[[i]]@DE_genes$down_regulated_Genes, sheet, startRow=1, startColumn=1, row.names = FALSE)
   }
 saveWorkbook(ExcelOutput, file=paste(dir, "/Analysis/Tables/AnalysisOutput_", Sys.Date(), ".xlsx",sep=""))
