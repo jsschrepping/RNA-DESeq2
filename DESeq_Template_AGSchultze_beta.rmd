@@ -1484,7 +1484,8 @@ as a matrix, which is then used as an offset for different expression of gene-le
 # Define path where the Kallisto files are stored
 files <- paste(dir, "/Data/output/kallisto/kallisto/", samples_to_keep, "/abundance.h5", sep = "")
 # Naming the entries in the vector assures correct column names in the expression tables
-names(files) <- sample_table$ID
+file_names<-sort(sample_table$ID)
+names(files) <- file_names
 # Import samples and perform the distribution of transcripts to genes
 txi_kallisto <- tximport(files, 
                          type="kallisto", 
