@@ -139,7 +139,7 @@ highestGenes <- function(numGenes=10){
       geom_boxplot()+
       xlab("Gene")+
       ylab("Normalized Expression")+
-      ggtitle("Expression of 10 highest expressed genes") + 
+      ggtitle(paste("Expression of", numGenes, "highest expressed genes")) + 
       theme_bw() +
       coord_flip() +
       theme(axis.text.x = element_text(size=8, angle = 90, hjust = 1),
