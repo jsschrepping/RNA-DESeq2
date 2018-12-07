@@ -229,7 +229,9 @@ plotPCA <- function(pca_input = dds_vst,
                      anno_colour,
                      shape="NULL",
                      point_size=3,
-                     title="PCA"){
+                     title="PCA", 
+                    label = NULL, 
+                    label_subset = NULL){
   
   if(!is.data.frame(pca_input)){
   vst_matrix <-as.matrix(assay(pca_input))
@@ -288,7 +290,20 @@ plotPCA <- function(pca_input = dds_vst,
           scale_shape_discrete(name=shape)
       }
   }
-  pca_plot <- pca_plot+
+
+# adds a label to the plot. To label only specific points, put them in the arument label_subset
+  if (!is.null(label) == TRUE){
+    pcaData$label <- sample_table[[label]]
+    if(!is.null(label_subset) == TRUE){
+    pcaData_labeled <- pcaData[pcaData$label %in% label_subset,]
+    } else {
+      pcaData_labeled <- pcaData
+    }
+      pca_plot <- pca_plot + 
+      geom_text_repel(data = pcaData_labeled, aes(label = label), nudge_x = 2, nudge_y = 2, colour = "black") 
+  }
+  
+    pca_plot <- pca_plot+
     xlab(paste0("PC ",xPC, ": ", percentVar[1], "% variance")) +
     ylab(paste0("PC ",yPC,": ", percentVar[2], "% variance")) +
     coord_fixed()+
@@ -1476,7 +1491,7 @@ as a matrix, which is then used as an offset for different expression of gene-le
 
 ```{r kallisto import}
 # Define path where the Kallisto files are stored
-files <- paste(dir, "/Data/output/kallisto/kallisto/", samples_to_keep, "/abundance.h5", sep = "")
+files <- paste(dir, "/Data/output/kallisto/kallisto/", sample_table$ID, "/abundance.h5", sep = "")
 # Naming the entries in the vector assures correct column names in the expression tables
 names(files) <- sample_table$ID
 # Import samples and perform the distribution of transcripts to genes
