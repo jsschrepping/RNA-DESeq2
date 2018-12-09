@@ -2417,6 +2417,7 @@ sheet <- createSheet(ExcelOutput, sheetName = "combined DE Results")
 addDataFrame(cResults, sheet, startRow=1, startColumn=1,row.names=FALSE)
 # add DE results in single sheets
 for(i in 2:length(names(DEresults))){
+  gc()
   sheet <- createSheet(ExcelOutput, sheetName = names(DEresults[i]))
   addDataFrame(DEresults[[i]]@results, sheet, startRow=1, startColumn=1, row.names = FALSE)
   sheet <- createSheet(ExcelOutput, sheetName = paste(names(DEresults[i]),"_upDEGs"))
