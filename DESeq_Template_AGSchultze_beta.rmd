@@ -2399,6 +2399,7 @@ addDataFrame(tmp, sheet, startRow=1, startColumn=1, row.names = FALSE)
 # add DE test parameters
 tmp <- stack(unlist(DEresults$parameters))
 colnames(tmp)<-c("value","parameter")
+tmp <- rbind(tmp, data.frame(value = as.character(design(dds))[2], parameter = "design"))
 sheet <- createSheet(ExcelOutput, sheetName = "DE parameters")
 addDataFrame(tmp, sheet, startRow=1, startColumn=1, row.names = FALSE)
 # add combined DE results
