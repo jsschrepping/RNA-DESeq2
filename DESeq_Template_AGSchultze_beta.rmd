@@ -139,7 +139,7 @@ highestGenes <- function(numGenes=10){
       geom_boxplot()+
       xlab("Gene")+
       ylab("Normalized Expression")+
-      ggtitle("Expression of 10 highest expressed genes") + 
+      ggtitle(paste("Expression of", numGenes, "highest expressed genes")) + 
       theme_bw() +
       coord_flip() +
       theme(axis.text.x = element_text(size=8, angle = 90, hjust = 1),
@@ -2399,6 +2399,7 @@ addDataFrame(tmp, sheet, startRow=1, startColumn=1, row.names = FALSE)
 # add DE test parameters
 tmp <- stack(unlist(DEresults$parameters))
 colnames(tmp)<-c("value","parameter")
+tmp <- rbind(tmp, data.frame(value = as.character(design(dds))[2], parameter = "design"))
 sheet <- createSheet(ExcelOutput, sheetName = "DE parameters")
 addDataFrame(tmp, sheet, startRow=1, startColumn=1, row.names = FALSE)
 # add combined DE results
@@ -2417,6 +2418,7 @@ sheet <- createSheet(ExcelOutput, sheetName = "combined DE Results")
 addDataFrame(cResults, sheet, startRow=1, startColumn=1,row.names=FALSE)
 # add DE results in single sheets
 for(i in 2:length(names(DEresults))){
+  gc()
   sheet <- createSheet(ExcelOutput, sheetName = names(DEresults[i]))
   addDataFrame(DEresults[[i]]@results, sheet, startRow=1, startColumn=1, row.names = FALSE)
   sheet <- createSheet(ExcelOutput, sheetName = paste(names(DEresults[i]),"_upDEGs"))
