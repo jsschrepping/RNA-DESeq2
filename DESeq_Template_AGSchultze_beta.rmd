@@ -375,7 +375,8 @@ plotSingleGene <-function(data=norm_anno,
       if(!is.null(anno_colour)){
         if (is.null(shape)){
           plot<-ggplot(geneCounts, aes(x = condition, y = y, colour=condition)) +
-            scale_color_manual(values=anno_colour)
+            scale_color_manual(values=anno_colour)+
+            geom_beeswarm(cex = 3, na.rm=T) 
         }else{
           geneCounts$shape <- sample_table[[shape]]
           legend_shape<-paste0(shape)
@@ -387,7 +388,8 @@ plotSingleGene <-function(data=norm_anno,
       }else{
         if (is.null(shape_opt)){
           plot<-ggplot(geneCounts, aes(x = condition, y = y, colour=condition)) +
-            scale_color_brewer(palette = "Spectral")
+            scale_color_brewer(palette = "Spectral")+
+            geom_beeswarm(cex = 3, na.rm=T, aes(size=3))
         }else{
           geneCounts$shape <- sample_table[[shape]]
           legend_shape<-paste0(shape)
@@ -1803,6 +1805,8 @@ plotLoadings(PC="PC3", ntop="all")
 
 ## Gene-to-Gene correlation analysis over all samples
 
+### Positive Pearson Correlation
+
 In the following chunk, we define the upper quartile of the variable genes and identify those genes with a high positive correlation (r>0.95).
 
 ```{r}
@@ -1823,6 +1827,13 @@ plotHeatmap(geneset = varR,
                 show_rownames = FALSE,
                 cluster_cols = FALSE)
 ```
+
+### WGCNA
+
+```{r}
+
+```
+
 
 ## Expression of selected genes across conditions
 
