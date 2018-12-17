@@ -19,7 +19,10 @@ First, we install all necessary CRAN and Bioconductor packages and load them int
 options(java.parameters = "-Xmx16000m") 
 
 # CRAN packages
-list.of.packages <- c("hwriter",
+list.of.packages <- c("ps",
+                      "haven",
+                      "hwriter",
+                      "hwriter",
                       "RColorBrewer",
                       "tidyverse",
                       "reshape2",
@@ -81,7 +84,15 @@ list.of.bioc.packages<- c("rhdf5",
                           "limma", 
                           "DOSE",
                           "vsn",
-                          "ComplexHeatmap")
+                          "ComplexHeatmap",
+                          "fgsea",
+                          "GOSemSim",
+                          "IRanges",
+                          "BiocGenerics",
+                          "AnnotationDbi",
+                          "S4Vectors",
+                          "GenomicRanges",
+                          "XVector")
 
 new.packages.bioc <- list.of.bioc.packages[!(list.of.bioc.packages %in% installed.packages()[,"Package"])]
 
@@ -93,8 +104,11 @@ lapply(c(list.of.packages,list.of.bioc.packages), require, character.only = TRUE
 
 ## Custom functions
 
-We define functions used for analysis and visualization of our data.
-
+We define functions used for analysis and visualization of our data. Most of our plots are based on ggplot2, so you can add different themes our change scales, etc. 
+Example:
+DEcompare$KEGGplot+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  
 ```{r global functions, hide = T}
 # Function to create breaks and colour vectors scaled to 0 (middle) and a specified upper and lower bound value
 scaleColors <- function(data = input_scale, # data to use
@@ -2432,9 +2446,9 @@ for(i in 2:length(names(DEresults))){
   gc()
   sheet <- createSheet(ExcelOutput, sheetName = names(DEresults[i]))
   addDataFrame(DEresults[[i]]@results, sheet, startRow=1, startColumn=1, row.names = FALSE)
-  sheet <- createSheet(ExcelOutput, sheetName = paste(names(DEresults[i]),"_upDEGs"))
+  sheet <- createSheet(ExcelOutput, sheetName = paste(substr(names(DEresults[i]),1 , 22),"_upDEGs"))
   addDataFrame(DEresults[[i]]@DE_genes$up_regulated_Genes, sheet, startRow=1, startColumn=1, row.names = FALSE)
-  sheet <- createSheet(ExcelOutput, sheetName = paste(names(DEresults[i]),"_downDEGs"))
+  sheet <- createSheet(ExcelOutput, sheetName = paste(substr(names(DEresults[i]),1 , 20),"_downDEGs"))
   addDataFrame(DEresults[[i]]@DE_genes$down_regulated_Genes, sheet, startRow=1, startColumn=1, row.names = FALSE)
   }
 saveWorkbook(ExcelOutput, file=paste(dir, "/Analysis/Tables/AnalysisOutput_", Sys.Date(), ".xlsx",sep=""))
