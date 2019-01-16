@@ -1264,6 +1264,9 @@ The project directory needs to contain a folder */Data*, which contains:
 
 4) A folder *GMTfiles* containing gene set annotation, incl. GO, KEGG, and the MSigDB (http://software.broadinstitute.org/gsea/msigdb) data sets: hallmark, motif and immunological gene sets
 
+*ATTENTION:* The gene annotation files as well as the GMT files for human and mouse can be downloaded here: 
+https://uni-bonn.sciebo.de/s/MizDdMdLYmFh7QX
+
 **Specify the organism of the data set**
 
 ```{r}
