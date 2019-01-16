@@ -785,7 +785,7 @@ plotVolcano <-  function(comparison,
     if(nrow(FClabel_up)>labelnum){
       FClabel_up <- as.character(FClabel_up[c(1:labelnum),"GENEID"])
     } else {
-        FClabel_up <- as.character(FClabel$GENEID)}
+        FClabel_up <- as.character(FClabel_up$GENEID)}
     plabel_up <- upDE[order(upDE$padj, decreasing = FALSE),]
     if(nrow(plabel_up)>labelnum){
       plabel_up <- as.character(plabel_up[c(1:labelnum),"GENEID"])
@@ -1677,6 +1677,8 @@ highestGenes(numGenes = 50)
 
 Plot a heatmap of all hierarchically clustered present genes.
 
+I case your machine has only 8 gb of ram, plotting a heatmap of all present genes might exceed your memory capacities and give the error: "Error: cannot allocate vector of size XX Gb". In that case, you can either reduce the genes to present based on a higher expression cutoff or continue with the heatmap of variable genes.
+
 ### clustered Columns & Rows
 ```{r, echo=TRUE, fig.height=10, fig.width=12}
 plotHeatmap(geneset = "all",
@@ -2377,6 +2379,8 @@ GSEA_tg_12mo_vs_wt_12mo$KEGGdown
 ```
 
 #### Heatmaps of GSEA result responsible genes
+
+Please make sure that the specified terms are enriched terms of the selected results.
 
 ```{r}
 plotGSEAHeatmap(GSEA_result = GSEA_tg_4mo_vs_wt_4mo$GOup, 
