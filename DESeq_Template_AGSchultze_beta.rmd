@@ -12,7 +12,7 @@ output:
 
 ## Install and load packages
 
-First, we install all necessary CRAN and Bioconductor packages and load them into the session.
+First, we install all necessary CRAN and Bioconductor packages and load them into the R session.
 
 ```{r load packages, results='hide',message=FALSE,warning=FALSE}
 # increase java heap size for export as excel
