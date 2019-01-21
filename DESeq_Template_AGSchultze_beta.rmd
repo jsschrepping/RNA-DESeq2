@@ -14,91 +14,56 @@ output:
 
 First, we install all necessary CRAN and Bioconductor packages and load them into the R session.
 
-```{r load packages, results='hide',message=FALSE,warning=FALSE}
-# increase java heap size for export as excel
-options(java.parameters = "-Xmx16000m") 
-
+### Install CRAN
+```{r}
 # CRAN packages
-list.of.packages <- c("ps",
-                      "haven",
-                      "hwriter",
-                      "hwriter",
-                      "RColorBrewer",
-                      "tidyverse",
-                      "reshape2",
-                      "dplyr",
-                      "stringr",
-                      "pheatmap",
-                      "colourlovers",
-                      "VennDiagram", 
-                      "ggbeeswarm",
-                      "scales",
-                      "magrittr", 
-                      "tidyr",
-                      "bit", 
-                      "data.table",
-                      "RSQLite",
-                      "Rcpp", 
-                      "devtools",
-                      "matrixStats", 
-                      "xlsx", 
-                      "gridBase", 
-                      "survival", 
-                      "rlang", 
-                      "MASS", 
-                      "ggforce",
-                      "tibble",
-                      "stringi",
-                      "gtools",
-                      "ggrepel",
-                      "Hmisc", 
-                      "gplots",
+list.of.packages <- c("tidyr",
                       "ggplot2",
+                      "ggrepel",
+                      "gplots",
+                      "ggbeeswarm",
+                      "hexbin",
+                      "reshape2",
                       "factoextra",
-                      "grid")
+                      "Hmisc",
+                      "VennDiagram",
+                      "openxlsx")
 
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
 
 if(length(new.packages)>0) install.packages(new.packages)
+```
 
+### Install BioConductor
+
+```{r}
 # BioconductoR packages
 list.of.bioc.packages<- c("rhdf5",
-                          "DESeq2",
-                          "IHW",
                           "clusterProfiler",
                           "GSEABase",
-                          "AnnotationDbi",
-                          "sva",
-                          "tximport",
-                          "limma",
-                          "geneplotter",
-                          "genefilter",
-                          "org.Mm.eg.db",
-                          "org.Hs.eg.db",
-                          "biomaRt", 
-                          "ReactomePA", 
-                          "grid",
-                          "pcaGoPromoter",
-                          "pcaGoPromoter.Hs.hg19",
-                          "pcaGoPromoter.Mm.mm9", 
-                          "limma", 
-                          "DOSE",
-                          "vsn",
+                          "RColorBrewer",
                           "ComplexHeatmap",
-                          "fgsea",
-                          "GOSemSim",
-                          "IRanges",
-                          "BiocGenerics",
-                          "AnnotationDbi",
-                          "S4Vectors",
-                          "GenomicRanges",
-                          "XVector")
+                          "tximport",
+                          "DESeq2",
+                          "vsn",
+                          "pheatmap",
+                          "genefilter",
+                          "biomaRt",
+                          "limma",
+                          "sva",
+                          "IHW",
+                          "org.Mm.eg.db",
+                          "org.Hs.eg.db")
 
 new.packages.bioc <- list.of.bioc.packages[!(list.of.bioc.packages %in% installed.packages()[,"Package"])]
-
+ 
 if(length(new.packages.bioc)>0)if (!requireNamespace("BiocManager")) install.packages("BiocManager")
 BiocManager::install(new.packages.bioc, update = FALSE)
+```
 
+### Load Packages
+
+```{r load packages, results='hide',message=FALSE,warning=FALSE}
 lapply(c(list.of.packages,list.of.bioc.packages), require, character.only = TRUE)
 ```
 
@@ -1703,7 +1668,7 @@ gc()
 
 ```{r, echo=TRUE}
 # define variable genes
-rv = rowVars(assay(dds_vst))
+rv = genefilter::rowVars(assay(dds_vst))
 q75 = quantile(rowVars(assay(dds_vst)), .75)
 q75_names = names(which(rv > q75))
 ```
@@ -1793,26 +1758,29 @@ ggplot(eigenvalue, aes(dim, variance.percent))+
 #### Genotype_Age
 ```{r, fig.width=6, fig.height=6, fig}
 plotPCA(ntop="all", 
-         xPC=1, 
-         yPC=2,
-         color="Genotype_Age",
-         anno_colour = col_genotype_age,
-         shape="Sex",
-         point_size=3,
-         title="Principle Component Analysis based on variance-stabilized counts")
+        xPC=1, 
+        yPC=2,
+        color="Genotype_Age",
+        anno_colour = col_genotype_age,
+        shape="Sex",
+        point_size=3,
+        label= "ID",
+        title="Principle Component Analysis based on variance-stabilized counts")
 ```
 
 #### Donor Mouse
 ```{r, fig.width=6, fig.height=6}
 sample_table$Mouse_ID<-as.factor(sample_table$Mouse_ID)
 plotPCA(ntop="all", 
-         xPC=1, 
-         yPC=2,
-         color="Mouse_ID",
-         anno_colour="NULL",
-         shape="NULL",
-         point_size=3,
-         title="Principle Component Analysis based on variance-stabilized counts")
+        xPC=1, 
+        yPC=2,
+        color="Mouse_ID",
+        anno_colour="NULL",
+        shape="NULL",
+        point_size=3,
+        label= "ID",
+        label_subset = "3611",
+        title="Principle Component Analysis based on variance-stabilized counts")
 ```
 
 #### Pseudoaligned Reads
@@ -2398,27 +2366,33 @@ write.table(norm_anno,
 As an optimal output for cooperation partners, we create an Excel workbook with the normalized count table, the rlog-transformed counts, the DE test parameters & the statistics of the respective differential expression tests. 
 
 ```{r , echo=TRUE, message=FALSE}
-ExcelOutput<-createWorkbook(type="xlsx")
+# create Workbook
+ExcelOutput<-createWorkbook()
+
 # add sample table
-sheet <- createSheet(ExcelOutput, sheetName = "Samples")
-addDataFrame(sample_table, sheet, startRow=1, startColumn=1, row.names = FALSE)
+sheet <- addWorksheet(ExcelOutput, sheetName = "Samples")
+writeDataTable(ExcelOutput, sheet, sample_table, withFilter=FALSE)
+
 # add normalized counts
 tmp <- norm_anno
 tmp$LRT_padj <- res_lrt$padj
-sheet <- createSheet(ExcelOutput, sheetName = "Normalized counts & Annotation")
-addDataFrame(tmp, sheet, startRow=1, startColumn=1, row.names = FALSE)
+sheet <- addWorksheet(ExcelOutput, sheetName = "Normalized counts & Annotation")
+writeDataTable(ExcelOutput, sheet, tmp, withFilter=FALSE)
+
 # add variance-stabilized counts
 tmp <- as.data.frame(assay(dds_vst))
 tmp$GENEID <- norm_anno$GENEID
 tmp$SYMBOL <- norm_anno$SYMBOL
-sheet <- createSheet(ExcelOutput, sheetName = "Variance-stabilized counts")
-addDataFrame(tmp, sheet, startRow=1, startColumn=1, row.names = FALSE)
+sheet <- addWorksheet(ExcelOutput, sheetName = "Variance-stabilized counts")
+writeDataTable(ExcelOutput, sheet, tmp, withFilter=FALSE)
+
 # add DE test parameters
 tmp <- stack(unlist(DEresults$parameters))
 colnames(tmp)<-c("value","parameter")
 tmp <- rbind(tmp, data.frame(value = as.character(design(dds))[2], parameter = "design"))
-sheet <- createSheet(ExcelOutput, sheetName = "DE parameters")
-addDataFrame(tmp, sheet, startRow=1, startColumn=1, row.names = FALSE)
+sheet <- addWorksheet(ExcelOutput, sheetName = "DE parameters")
+writeDataTable(ExcelOutput, sheet, tmp, withFilter=FALSE)
+
 # add combined DE results
 cResults <- NULL
 for (i in 2:length(names(DEresults))) {
@@ -2431,18 +2405,21 @@ for (i in 2:length(names(DEresults))) {
     cResults<-cbind(cResults,tmp)
   }
 }
-sheet <- createSheet(ExcelOutput, sheetName = "combined DE Results")
-addDataFrame(cResults, sheet, startRow=1, startColumn=1,row.names=FALSE)
+sheet <- addWorksheet(ExcelOutput, sheetName = "combined DE Results")
+writeDataTable(ExcelOutput, sheet, cResults, withFilter=FALSE)
+
 # add DE results in single sheets
 for(i in 2:length(names(DEresults))){
   gc()
-  sheet <- createSheet(ExcelOutput, sheetName = names(DEresults[i]))
-  addDataFrame(DEresults[[i]]@results, sheet, startRow=1, startColumn=1, row.names = FALSE)
-  sheet <- createSheet(ExcelOutput, sheetName = paste(substr(names(DEresults[i]),1 , 22),"_upDEGs"))
-  addDataFrame(DEresults[[i]]@DE_genes$up_regulated_Genes, sheet, startRow=1, startColumn=1, row.names = FALSE)
-  sheet <- createSheet(ExcelOutput, sheetName = paste(substr(names(DEresults[i]),1 , 20),"_downDEGs"))
-  addDataFrame(DEresults[[i]]@DE_genes$down_regulated_Genes, sheet, startRow=1, startColumn=1, row.names = FALSE)
+  sheet <- addWorksheet(ExcelOutput, sheetName = names(DEresults[i]))
+  writeDataTable(ExcelOutput, sheet, DEresults[[i]]@results, withFilter=FALSE)
+  sheet <- addWorksheet(ExcelOutput, sheetName = paste(substr(names(DEresults[i]),1 , 22),"_upDEGs"))
+  writeDataTable(ExcelOutput, sheet, DEresults[[i]]@DE_genes$up_regulated_Genes, withFilter=FALSE)
+  sheet <- addWorksheet(ExcelOutput, sheetName = paste(substr(names(DEresults[i]),1 , 20),"_downDEGs"))
+  writeDataTable(ExcelOutput, sheet, DEresults[[i]]@DE_genes$down_regulated_Genes, withFilter=FALSE)
   }
+
+# Save Workbook
 saveWorkbook(ExcelOutput, file=paste(dir, "/Analysis/Tables/AnalysisOutput_", Sys.Date(), ".xlsx",sep=""))
 ```
 
