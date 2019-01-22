@@ -2135,6 +2135,38 @@ plotRatios(comp1 = "tg_4mo_vs_wt_4mo",
            comp2 = "tg_12mo_vs_wt_12mo")
 ```
 
+
+### Fold change rank plots
+```{r, fig.height=6,fig.width=6}
+plotFCrank <- function(comp1,
+                       comp2){
+    rank <- na.omit(DEresults[names(DEresults) == comp1][[1]]@results)
+    rank <- rank[rank$padj < 0.05 , c("GENEID","comparison","log2FoldChange")]
+    rank <- rank[order(rank$log2FoldChange,decreasing = TRUE),]
+    rank$rank <- c(1:nrow(rank))
+    rank2 <- DEresults[names(DEresults) == comp2][[1]]@results
+    rank2 <- rank2[rownames(rank),c("GENEID","comparison","log2FoldChange")]
+    rank2$rank <- rank$rank 
+    rank <- rbind(rank, rank2)
+
+    ggplot(rank,aes(x=rank,y=log2FoldChange,color=comparison)) +
+      geom_point(alpha=0.5) +
+      geom_line(aes(group=GENEID),color="grey",alpha=0.2)+
+      theme_bw() +
+      ylab("log2(FoldChange)")+
+      xlab(paste("FC rank of " ,comp1, sep=""))+
+      geom_hline(yintercept = 0)+
+      geom_hline(yintercept = c(log(2,2),-(log(2,2))), colour="firebrick1")+
+      theme(text = element_text(size=10))+
+      ggtitle("Comparison of fold changes (comp1 padj<0.05)")+ 
+      theme(legend.position="bottom")
+}
+
+plotFCrank(comp1 = "tg_4mo_vs_wt_4mo", 
+           comp2 = "tg_8mo_vs_wt_8mo")
+
+```
+
 ### GSEA across comparisons
 
 Define universe and gene sets for subsequent GSEA analyses.
