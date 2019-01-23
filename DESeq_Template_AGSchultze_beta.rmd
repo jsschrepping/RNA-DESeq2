@@ -1173,6 +1173,7 @@ plotGSEAHeatmap<-function(GSEA_result,
               title = paste("Heatmap of genes responsible for enrichment of term: ",term,", in ",deparse(substitute(GSEA_result)),sep=""),
                 show_rownames = TRUE,
                 cluster_cols = FALSE)
+}
 ```
 
 # 2. Project information
