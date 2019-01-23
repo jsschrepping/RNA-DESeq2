@@ -2442,7 +2442,7 @@ writeDataTable(ExcelOutput, sheet, cResults, withFilter=FALSE)
 # add DE results in single sheets
 for(i in 2:length(names(DEresults))){
   gc()
-  sheet <- addWorksheet(ExcelOutput, sheetName = names(DEresults[i]))
+  sheet <- addWorksheet(ExcelOutput, sheetName = substr(names(DEresults[i]),1 , 30))
   writeDataTable(ExcelOutput, sheet, DEresults[[i]]@results, withFilter=FALSE)
   sheet <- addWorksheet(ExcelOutput, sheetName = paste(substr(names(DEresults[i]),1 , 22),"_upDEGs"))
   writeDataTable(ExcelOutput, sheet, DEresults[[i]]@DE_genes$up_regulated_Genes, withFilter=FALSE)
@@ -2451,7 +2451,8 @@ for(i in 2:length(names(DEresults))){
   }
 
 # Save Workbook
-saveWorkbook(ExcelOutput, file=paste(dir, "/Analysis/Tables/AnalysisOutput_", Sys.Date(), ".xlsx",sep=""))
+filename <- paste(dir,"/Analysis/Tables/AnalysisOutput_",gsub(":","-",as.character(Sys.time())),".xlsx",sep="")
+saveWorkbook(ExcelOutput, file=filename)
 ```
 
 # 10. Save image and session Info
