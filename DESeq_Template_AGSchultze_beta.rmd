@@ -1142,7 +1142,7 @@ GSEA <-  function(comparison,
   results
 }
 
- # Function to plot a heatmap of genes responsible for gene set enrichment
+# Function to plot a heatmap of genes responsible for gene set enrichment
 plotGSEAHeatmap<-function(GSEA_result,
                         GeneSet, 
                         term,
@@ -1159,12 +1159,12 @@ plotGSEAHeatmap<-function(GSEA_result,
   }
   
   if(GeneSet == "HALLMARK" | GeneSet == "ImmunoSignatures" | GeneSet == "Motifs"){
-    gene.list <- getLDS(attributes = c("hgnc_symbol"), 
-                        filters = "hgnc_symbol", 
+    gene.list <- getLDS(attributes = c("entrezgene"), 
+                        filters = "entrezgene", 
                         values = gene.list, 
-                        mart = human, 
+                        mart = useMart("ensembl", dataset = "hsapiens_gene_ensembl"), 
                         attributesL = c("mgi_symbol"), 
-                        martL = mouse, 
+                        martL = useMart("ensembl", dataset = "mmusculus_gene_ensembl"),
                         uniqueRows=T)[,2]
     }
   
@@ -1173,8 +1173,6 @@ plotGSEAHeatmap<-function(GSEA_result,
               title = paste("Heatmap of genes responsible for enrichment of term: ",term,", in ",deparse(substitute(GSEA_result)),sep=""),
                 show_rownames = TRUE,
                 cluster_cols = FALSE)
-}
-
 ```
 
 # 2. Project information
