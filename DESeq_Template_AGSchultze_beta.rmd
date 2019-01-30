@@ -166,7 +166,7 @@ plotHeatmap <- function(geneset,
 }
 ```
 
-### Heatmap of genes of specified GO, KEGG or HALLMARK gene sets
+### Heatmap of genes of specified gene sets
 ```{r}
 plotGeneSetHeatmap <- function(cat,
                                term,
@@ -190,9 +190,23 @@ plotGeneSetHeatmap <- function(cat,
   if(cat=="KEGG"){
     genes <- unique(KEGG[grep(xterm,KEGG$PATHWAY),"SYMBOL"])
   }
-  if(cat=="HALLMARK"){
+  if(cat=="Hallmark"){
     genes <- unique(hallmark_genes[grep(xterm,hallmark_genes$ont),"gene"])
-    if(organism == "mouse"){
+  }
+  if(cat=="cannonicalPathways"){
+    genes <- unique(cannonicalPathway_genes[grep(xterm,cannonicalPathway_genes$ont),"gene"])
+  }
+  if(cat=="ImmunoSignatures"){
+    genes <- unique(immuno_genes[grep(xterm,immuno_genes$ont),"gene"])
+  }
+  if(cat=="Motifs"){
+    genes <- unique(motifs[grep(xterm,motifs$ont),"gene"])
+  }
+  if(organism == "mouse" & 
+     cat == "Hallmark"|
+     cat == "cannonicalPathways"| 
+     cat =="ImmunoSignatures"|
+     cat == "Motifs"){
     genes <- getLDS(attributes = c("entrezgene"), 
                     filters = "entrezgene", 
                     values = genes, 
@@ -200,8 +214,8 @@ plotGeneSetHeatmap <- function(cat,
                     attributesL = c("mgi_symbol"), 
                     martL = useMart("ensembl", dataset = "mmusculus_gene_ensembl"), 
                     uniqueRows=T)[,2]
-    }
   }
+  
   plotHeatmap(geneset = genes,
               keyType = "Symbol",
               title = paste("Heatmap of present genes annotated to: ",term, sep=""),
