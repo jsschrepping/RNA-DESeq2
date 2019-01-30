@@ -47,15 +47,16 @@ The aim was to write a script that can be used as a template for standard bulk R
 	•   Overall visualization of DE results
 		i.  Heatmap of the union of all DE genes
 		ii. Venn diagrams
-		iii.	 Ratio-Ratio Plots
-		iv.	 GSEA across comparisons (incl. GO & KEGG)
-	•	 Likelihood Ratio Test
-	•	 Analysis of specific comparisons
-		i.	 MA plots
-		ii.	 P value distribution
-		iii.	 Heatmap of DE genes
-		iv.	 Volcano Plot
-		v.	 GSEA (Incl. GO, KEGG, Hallmark, cannonicalPathways, Motis, ImmunoSignatures)
+		iii. Ratio-Ratio Plots
+		iv. Ranked FC plots
+		v. GSEA across comparisons (incl. GO & KEGG)
+	•   Likelihood Ratio Test
+	•   Analysis of specific comparisons
+		i. MA plots
+		ii. P value distribution
+		iii. Heatmap of DE genes
+		iv. Volcano Plot
+		v. GSEA (Incl. GO, KEGG, Hallmark, cannonicalPathways, Motifs, ImmunoSignatures)
 
 9. Export of the results
 
