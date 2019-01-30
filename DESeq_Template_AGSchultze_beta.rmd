@@ -1118,11 +1118,20 @@ dotplotGSEA <- function(x,
                         show=25,
                         font.size=10,
                         title.size=10,
-                        title.width=100){
+                        title.width=100,
+                        order="count"){
   if(nrow(x)<1){
     print("No enrichment found.")
   }else{
     x <- if(nrow(x)>show){x[c(1:show),]}else{x}
+    if(order=="padj"){
+    x <- x[order(x$p.adjust,decreasing=TRUE),]
+    x$Description <- factor(x$Description, levels = unique(x$Description))
+    }
+    if(order=="count"){
+    x <- x[order(x$Count,decreasing=FALSE),]
+    x$Description <- factor(x$Description, levels = unique(x$Description))
+    }
     ggplot(x, aes(x = GeneRatio, y = Description, color = p.adjust)) +
       geom_point(aes(size = Count)) +
       scale_colour_gradientn(colours=c('red', 
