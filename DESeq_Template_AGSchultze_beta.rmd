@@ -1172,7 +1172,7 @@ plotGSEAHeatmap<-function(GSEA_result,
                       OrgDb="org.Mm.eg.db")[,2]
   }
   
-  if(GeneSet == "HALLMARK" | GeneSet == "ImmunoSignatures" | GeneSet == "Motifs"){
+  if(GeneSet == "HALLMARK" | GeneSet == "ImmunoSignatures" |GeneSet == "cannonicalPathways" | GeneSet == "Motifs"){
     gene.list <- getLDS(attributes = c("entrezgene"), 
                         filters = "entrezgene", 
                         values = gene.list, 
