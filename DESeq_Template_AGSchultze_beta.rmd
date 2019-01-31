@@ -1125,12 +1125,15 @@ dotplotGSEA <- function(x,
   }else{
     x <- if(nrow(x)>show){x[c(1:show),]}else{x}
     if(order=="padj"){
+    x <- x[order(x$Count,decreasing=FALSE),]
+    x$GeneRatio <- factor(x$GeneRatio, levels = unique(x$GeneRatio))
     x <- x[order(x$p.adjust,decreasing=TRUE),]
     x$Description <- factor(x$Description, levels = unique(x$Description))
     }
     if(order=="count"){
     x <- x[order(x$Count,decreasing=FALSE),]
     x$Description <- factor(x$Description, levels = unique(x$Description))
+    x$GeneRatio <- factor(x$GeneRatio, levels = unique(x$GeneRatio))
     }
     ggplot(x, aes(x = GeneRatio, y = Description, color = p.adjust)) +
       geom_point(aes(size = Count)) +
