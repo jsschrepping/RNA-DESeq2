@@ -343,6 +343,7 @@ plotLoadings <- function(PC,
   rownames(heatmap) <- paste(heatmap$GENEID,": ",heatmap$SYMBOL,sep="")  
   heatmap <- heatmap[,colnames(heatmap) %in% sample_table$ID]
   heatmap_scale <- as.matrix(t(scale(t(heatmap))))
+  heatmap_scale <- heatmap_scale[,order(sample_table[[plot_order]], decreasing = FALSE)]
   
   # Heatmap
   pheatmap(heatmap_scale,
