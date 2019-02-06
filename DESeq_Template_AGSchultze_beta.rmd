@@ -40,6 +40,7 @@ if(length(new.packages)>0) install.packages(new.packages)
 # BioconductoR packages
 list.of.bioc.packages<- c("rhdf5",
                           "clusterProfiler",
+                          "DOSE",
                           "GSEABase",
                           "RColorBrewer",
                           "ComplexHeatmap",
@@ -886,7 +887,7 @@ plotVolcano <-  function(comparison,
 ```{r}
 GSEA <-  function(comparison,
                    organism,
-                   GeneSets =c("GO","KEGG","Hallmark","cannonicalPathways","Motifs","ImmunoSignatures"),
+                   GeneSets =c("GO","KEGG","DO","Hallmark","cannonicalPathways","Motifs","ImmunoSignatures"),
                    GOntology = "BP",
                    pCorrection = "bonferroni", # choose the p-value adjustment method
                    pvalueCutoff = 0.05, # set the unadj. or adj. p-value cutoff (depending on correction method)
@@ -975,6 +976,7 @@ GSEA <-  function(comparison,
   }
   
   if("Hallmark" %in% GeneSets |
+     "DO" %in% GeneSets |
      "cannonicalPathways" %in% GeneSets| 
      "ImmunoSignatures" %in% GeneSets | 
      "Motifs" %in% GeneSets){
@@ -992,6 +994,40 @@ GSEA <-  function(comparison,
                               attributesL = c("entrezgene"), 
                               martL = useMart("ensembl", dataset = "hsapiens_gene_ensembl"), 
                               uniqueRows=T)[,2]
+  }
+  
+  # DO enrichment
+  if("DO" %in% GeneSets){
+    print("Performing Disease Ontology enrichment")
+    
+    if(length(entrez_up)<20){
+      print("Too few upregulated genes for DO enrichment (<20)")
+      results$DOup <- "Too few upregulated genes for DO enrichment (<20)"
+    }else{
+      results$DOup <- as.data.frame(enrichDO(gene = entrez_up_hsa, 
+                                             universe = universe_mouse2human_Entrez, 
+                                             pAdjustMethod = pCorrection,
+                                             pvalueCutoff  = pvalueCutoff,
+                                             qvalueCutoff = qvalueCutoff,
+                                             minGSSize     = 5,
+                                             maxGSSize     = 500,
+                                             readable=TRUE))
+      if(nrow(results$DOup)>0){results$DOup$Enrichment <- paste("DO enrichment for genes upregulated in ",comparison,sep="")}
+    }
+    if(length(entrez_down)<20){
+      print("Too few downregulated genes for DO enrichment (<20)")
+      results$DOdown <- "Too few downregulated genes for DO enrichment (<20)"
+    } else{
+      results$DOdown <- as.data.frame(enrichDO(gene = entrez_down_hsa, 
+                                               universe = universe_mouse2human_Entrez, 
+                                               pAdjustMethod = pCorrection,
+                                               pvalueCutoff  = pvalueCutoff,
+                                               qvalueCutoff = qvalueCutoff,
+                                               minGSSize     = 5,
+                                               maxGSSize     = 500,
+                                               readable=TRUE))
+      if(nrow(results$DOdown)>0){results$DOdown$Enrichment <- paste("DO enrichment for genes downregulated in ",comparison,sep="")}
+    }
   }
   
   # Hallmark enrichment
@@ -1158,17 +1194,17 @@ dotplotGSEA <- function(x,
 ### Heatmap of genes responsible for gene set enrichment
 ```{r global functions, hide = T}
 plotGSEAHeatmap<-function(GSEA_result,
-                        GeneSet, 
-                        term,
-                        show_rownames = TRUE,
-                        cluster_cols = FALSE,
-                        regulation,
-                        font.size=7,
-                        max.value=2){
+                          GeneSet, 
+                          term,
+                          show_rownames = TRUE,
+                          cluster_cols = FALSE,
+                          regulation,
+                          font.size=7,
+                          max.value=2){
   xterm <- paste("^", term, "$", sep="") 
   tmp <- GSEA_result[grep(xterm,GSEA_result$Description),]
   gene.list <- unique(unlist(strsplit(tmp$geneID, split = "/")))
-    
+  
   if(GeneSet == "KEGG"){
     gene.list <- bitr(gene.list, 
                       fromType = "ENTREZID", 
@@ -1176,7 +1212,7 @@ plotGSEAHeatmap<-function(GSEA_result,
                       OrgDb="org.Mm.eg.db")[,2]
   }
   
-  if(GeneSet == "HALLMARK" | GeneSet == "ImmunoSignatures" |GeneSet == "cannonicalPathways" | GeneSet == "Motifs"){
+  if(GeneSet == "HALLMARK" |GeneSet == "DO" | GeneSet == "ImmunoSignatures" | GeneSet == "cannonicalPathways" | GeneSet == "Motifs"){
     gene.list <- getLDS(attributes = c("entrezgene"), 
                         filters = "entrezgene", 
                         values = gene.list, 
@@ -1184,7 +1220,7 @@ plotGSEAHeatmap<-function(GSEA_result,
                         attributesL = c("mgi_symbol"), 
                         martL = useMart("ensembl", dataset = "mmusculus_gene_ensembl"),
                         uniqueRows=T)[,2]
-    }
+  }
   
   plotHeatmap(geneset = gene.list,
               keyType = "Symbol",
@@ -1193,6 +1229,7 @@ plotGSEAHeatmap<-function(GSEA_result,
               cluster_cols = cluster_cols,
               font.size=font.size,
               max.value=max.value)
+}
 }
 ```
 
