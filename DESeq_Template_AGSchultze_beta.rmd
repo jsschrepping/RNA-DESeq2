@@ -1245,8 +1245,6 @@ plotGSEAHeatmap<-function(GSEA_result,
 * Species:
 * Cell type(s):
 
-* Seq-Tracker: 
-
 * RNA-isolation: 
 * Library-Production: 
 * Sequencing method:
