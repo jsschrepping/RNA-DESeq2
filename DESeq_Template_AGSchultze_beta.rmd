@@ -500,6 +500,7 @@ DEAnalysis <- function(condition,
                        lfcThreshold = 0,
                        sigFC = 2, 
                        multiple_testing = "IHW",
+                       independentFiltering="TRUE",
                        shrinkage = TRUE,
                        shrinkType = "normal"){
   # create results_list  
@@ -532,7 +533,7 @@ DEAnalysis <- function(condition,
                                             paste(comparison_table$control[i])),
                                lfcThreshold = lfcThreshold,
                                alpha = alpha,
-                               independentFiltering = TRUE,
+                               independentFiltering = independentFiltering,
                                altHypothesis = "greaterAbs",
                                pAdjustMethod= multiple_testing)
     }
