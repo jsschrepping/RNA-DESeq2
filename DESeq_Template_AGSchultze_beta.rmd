@@ -1226,6 +1226,7 @@ dotplotGSEA <- function(x,
 plotGSEAHeatmap<-function(GSEA_result,
                           GeneSet, 
                           term,
+                          organism,
                           show_rownames = TRUE,
                           cluster_cols = FALSE,
                           regulation,
@@ -1235,21 +1236,34 @@ plotGSEAHeatmap<-function(GSEA_result,
   tmp <- GSEA_result[grep(xterm,GSEA_result$Description),]
   gene.list <- unique(unlist(strsplit(tmp$geneID, split = "/")))
   
+  if(organism == "mouse") {
+    OrgDb = org.Mm.eg.db
+  } else if(organism == "human"){
+    OrgDb = org.Hs.eg.db
+  } else {print("Wrong Organism. Select mouse or human.")}
+  
   if(GeneSet == "KEGG"){
     gene.list <- bitr(gene.list, 
                       fromType = "ENTREZID", 
                       toType="SYMBOL", 
-                      OrgDb="org.Mm.eg.db")[,2]
+                      OrgDb=OrgDb)[,2]
   }
   
   if(GeneSet == "HALLMARK" |GeneSet == "DO" | GeneSet == "ImmunoSignatures" | GeneSet == "cannonicalPathways" | GeneSet == "Motifs"){
-    gene.list <- getLDS(attributes = c("entrezgene"), 
-                        filters = "entrezgene", 
-                        values = gene.list, 
-                        mart = useMart("ensembl", dataset = "hsapiens_gene_ensembl"), 
-                        attributesL = c("mgi_symbol"), 
-                        martL = useMart("ensembl", dataset = "mmusculus_gene_ensembl"),
-                        uniqueRows=T)[,2]
+    if(organism == "mouse") {
+      gene.list <- getLDS(attributes = c("entrezgene"), 
+                          filters = "entrezgene", 
+                          values = gene.list, 
+                          mart = useMart("ensembl", dataset = "hsapiens_gene_ensembl"), 
+                          attributesL = c("mgi_symbol"), 
+                          martL = useMart("ensembl", dataset = "mmusculus_gene_ensembl"),
+                          uniqueRows=T)[,2]
+    }else if(organism == "human"){
+      gene.list <- bitr(gene.list, 
+                      fromType = "ENTREZID", 
+                      toType="SYMBOL", 
+                      OrgDb=OrgDb)[,2]
+    }
   }
   
   plotHeatmap(geneset = gene.list,
@@ -1259,7 +1273,6 @@ plotGSEAHeatmap<-function(GSEA_result,
               cluster_cols = cluster_cols,
               font.size=font.size,
               max.value=max.value)
-}
 }
 ```
 
