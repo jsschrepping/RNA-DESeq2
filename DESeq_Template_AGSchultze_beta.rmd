@@ -1010,20 +1010,27 @@ GSEA <-  function(comparison,
      "cannonicalPathways" %in% GeneSets| 
      "ImmunoSignatures" %in% GeneSets | 
      "Motifs" %in% GeneSets){
-    entrez_up_hsa <- as.character(getLDS(attributes = c("mgi_symbol"), 
-                                         filters = "mgi_symbol", 
-                                         values = DE_up, 
-                                         mart = useMart("ensembl", dataset = "mmusculus_gene_ensembl"), 
-                                         attributesL = c("entrezgene"), 
-                                         martL = useMart("ensembl", dataset = "hsapiens_gene_ensembl"), 
-                                         uniqueRows=T)[,2])
-    entrez_down_hsa <- getLDS(attributes = c("mgi_symbol"), 
-                              filters = "mgi_symbol", 
-                              values = DE_down, 
-                              mart = useMart("ensembl", dataset = "mmusculus_gene_ensembl"), 
-                              attributesL = c("entrezgene"), 
-                              martL = useMart("ensembl", dataset = "hsapiens_gene_ensembl"), 
-                              uniqueRows=T)[,2]
+    if(organism=="mouse"){
+      entrez_up_hsa <- as.character(getLDS(attributes = c("mgi_symbol"), 
+                                           filters = "mgi_symbol", 
+                                           values = DE_up, 
+                                           mart = useMart("ensembl", dataset = "mmusculus_gene_ensembl"),
+                                           attributesL = c("entrezgene"), 
+                                           martL = useMart("ensembl", dataset = "hsapiens_gene_ensembl"),
+                                           uniqueRows=T)[,2])
+      
+      entrez_down_hsa <- getLDS(attributes = c("mgi_symbol"), 
+                                filters = "mgi_symbol", 
+                                values = DE_down, 
+                                mart = useMart("ensembl", dataset = "mmusculus_gene_ensembl"), 
+                                attributesL = c("entrezgene"), 
+                                martL = useMart("ensembl", dataset = "hsapiens_gene_ensembl"), 
+                                uniqueRows=T)[,2]
+    }
+    if(organism=="human"){
+      entrez_up_hsa <- entrez_up
+      entrez_down_hsa <- entrez_down
+    }
   }
   
   # DO enrichment
