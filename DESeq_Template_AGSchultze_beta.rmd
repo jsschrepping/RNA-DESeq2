@@ -131,7 +131,8 @@ highestGenes <- function(numGenes=10){
 
 ### Heatmap
 ```{r}
-plotHeatmap <- function(geneset,
+plotHeatmap <- function(input=norm_anno,
+                        geneset,
                     title="",
                     keyType = "Ensembl",
                     show_rownames = FALSE,
@@ -139,12 +140,12 @@ plotHeatmap <- function(geneset,
                     font.size=7,
                     max.value=2){
   if(geneset[1] =="all"){
-    input <- norm_anno
+    input <- input
   }else{
     if(keyType == "Ensembl"){
-      input <- norm_anno[norm_anno$GENEID %in% geneset,]
+      input <- input[input$GENEID %in% geneset,]
     } else if(keyType == "Symbol"){
-      input <- norm_anno[norm_anno$SYMBOL %in% geneset,]
+      input <- input[input$SYMBOL %in% geneset,]
     } else{
       print("Wrong keyType. Choose Ensembl or Symbol!")
     }
@@ -169,7 +170,8 @@ plotHeatmap <- function(geneset,
 
 ### Heatmap of genes of specified gene sets
 ```{r}
-plotGeneSetHeatmap <- function(cat,
+plotGeneSetHeatmap <- function(input=norm_anno,
+                               cat,
                                term,
                                organism,
                                show_rownames =TRUE, 
@@ -217,7 +219,7 @@ plotGeneSetHeatmap <- function(cat,
                     uniqueRows=T)[,2]
   }
   
-  plotHeatmap(geneset = genes,
+  plotHeatmap(input=input,geneset = genes,
               keyType = "Symbol",
               title = paste("Heatmap of present genes annotated to: ",term, sep=""),
               show_rownames = show_rownames,
@@ -823,7 +825,8 @@ plotPvalues <- function(comparison){
 
 ### Heatmaps of DE genes based on pheatmap
 ```{r}
-plotDEHeatmap <- function(comparison,
+plotDEHeatmap <- function(input=norm_anno,
+                               comparison,
                           factor,
                           conditions="all",
                           show_rownames = FALSE,
@@ -1230,7 +1233,8 @@ dotplotGSEA <- function(x,
 
 ### Heatmap of genes responsible for gene set enrichment
 ```{r global functions, hide = T}
-plotGSEAHeatmap<-function(GSEA_result,
+plotGSEAHeatmap<-function(input=norm_anno,
+                               GSEA_result,
                           GeneSet, 
                           term,
                           organism,
@@ -1273,7 +1277,7 @@ plotGSEAHeatmap<-function(GSEA_result,
     }
   }
   
-  plotHeatmap(geneset = gene.list,
+  plotHeatmap(input=input,geneset = gene.list,
               keyType = "Symbol",
               title = paste("Heatmap of genes responsible for enrichment of term: ",term,", in ",deparse(substitute(GSEA_result)),sep=""),
               show_rownames = show_rownames,
@@ -1346,7 +1350,7 @@ organism = "mouse" # choose "mouse" or "human"
 **Specify the project directory here:**
 
 ```{r, warning=F}
-dir <- "E:/sciebo/DESeq2_pipeline"
+dir <- "C:/Users/reusch.n/sciebo/DESeq2_pipeline"
 
 # creating output directories (if not already existing):
 dir.create(file.path(dir, "Analysis", "Tables"), recursive = T)
@@ -1689,6 +1693,18 @@ However, blind dispersion estimation is not the appropriate choice if one expect
 dds_vst <- rlog(dds, blind = TRUE)
 
 # dds_vst <- vst(dds, blind = TRUE)
+
+# For later plotting of Heatmaps, it may be useful to have a dataframe of the variance stabilized values as log2-transformed (vst_anno_log2) as well as as normal counts (vst_anno).
+vst_anno_log2<-as.data.frame(assay(dds_vst))
+vst_anno_log2<-merge(vst_anno_log2,norm_anno[,c("GENEID","SYMBOL","GENETYPE","DESCRIPTION","CHR")],by="row.names")
+rownames(vst_anno_log2)<-vst_anno_log2$Row.names
+vst_anno_log2$Row.names<-NULL
+
+vst_anno<-as.data.frame(assay(dds_vst))
+vst_anno<-2^vst_anno
+vst_anno<-merge(vst_anno,norm_anno[,c("GENEID","SYMBOL","GENETYPE","DESCRIPTION","CHR")],by="row.names")
+rownames(vst_anno)<-vst_anno$Row.names
+vst_anno$Row.names<-NULL
 ```
 
 ### Plot row standard deviations versus row means
@@ -1750,7 +1766,7 @@ I case your machine has only 8 gb of ram, plotting a heatmap of all present gene
 
 ### clustered Columns & Rows
 ```{r, echo=TRUE, fig.height=10, fig.width=12}
-plotHeatmap(geneset = "all",
+plotHeatmap(input=norm_anno,geneset = "all",
             title = "Heatmap of all present genes",
             show_rownames = FALSE,
             cluster_cols = TRUE)
@@ -1758,7 +1774,7 @@ plotHeatmap(geneset = "all",
 
 ### clustered Rows
 ```{r, echo=TRUE, message=FALSE, results='hide', fig.height=10, fig.width=12}
-plotHeatmap(geneset = "all",
+plotHeatmap(input=norm_anno,geneset = "all",
                 title = "Heatmap of all present genes",
                 show_rownames = FALSE,
                 cluster_cols = FALSE)
@@ -1779,7 +1795,7 @@ q75_names = names(which(rv > q75))
 
 ###  clustered Columns & Rows
 ```{r, echo=TRUE, message=FALSE, results='hide', fig.height=10, fig.width=12}
-plotHeatmap(geneset = q75_names,
+plotHeatmap(input=norm_anno,geneset = q75_names,
                 title = "Heatmap of all most variable genes",
                 show_rownames = FALSE,
                 cluster_cols = TRUE)
@@ -1787,7 +1803,7 @@ plotHeatmap(geneset = q75_names,
 
 ###  clustered Rows
 ```{r, echo=TRUE, message=FALSE, results='hide', fig.height=10, fig.width=12}
-plotHeatmap(geneset = q75_names,
+plotHeatmap(input=norm_anno,geneset = q75_names,
                 title = "Heatmap of all most variable genes",
                 show_rownames = FALSE,
                 cluster_cols = FALSE)
@@ -1925,7 +1941,7 @@ rcor_filt_melt <- melt(rcor_filt,na.rm = TRUE)
 rcor_filt_melt_cutoff <- rcor_filt_melt[rcor_filt_melt$value>0.95,]
 varR <- unique(rcor_filt_melt_cutoff$Var1)
 
-plotHeatmap(geneset = varR,
+plotHeatmap(input=norm_anno,geneset = varR,
                 title = "Heatmap of all variable and co-expressed genes",
                 show_rownames = FALSE,
                 cluster_cols = FALSE)
@@ -1947,6 +1963,20 @@ plotSingleGene(data=norm_anno,
                  condition="Genotype_Age",
                  anno_colour=col_genotype_age,
                  shape= "Sex")
+
+# Plot variance stabilized value
+# plotSingleGene(data=vst_anno, 
+#                  symbol="Cst7", 
+#                  condition="Genotype_Age",
+#                  anno_colour=col_genotype_age,
+#                  shape= "Sex")
+# 
+# # Plot batch-corrected value
+# plotSingleGene(data=removedbatch_anno, 
+#                  symbol="Cst7", 
+#                  condition="Genotype_Age",
+#                  anno_colour=col_genotype_age,
+#                  shape= "Sex")
 ```
 
 ## Heatmap of selected genes sets
@@ -1954,23 +1984,19 @@ plotSingleGene(data=norm_anno,
 Plot a heatmap of genes annotated to a selected GO, KEGG or Hallmark term.
 
 ```{r, fig.height= 12, fig.width=12}
-plotGeneSetHeatmap(cat="GO", 
-                   term="neutrophil degranulation",
-                   organism = "mouse",
-                   show_rownames =TRUE, 
-                   cluster_cols = FALSE)
-
-plotGeneSetHeatmap(cat="KEGG", 
+plotGeneSetHeatmap(input=norm_anno,
+                               cat="KEGG", 
                    term="Alzheimer disease",
                    organism = "mouse",
                    show_rownames =TRUE, 
                    cluster_cols = FALSE)
   
-plotGeneSetHeatmap(cat="HALLMARK", 
-                   term="HALLMARK_APOPTOSIS",
-                   organism = "mouse",
-                   show_rownames =TRUE, 
-                   cluster_cols = FALSE)
+# plotGeneSetHeatmap(input=norm_anno,
+#                                cat="HALLMARK", 
+#                    term="HALLMARK_APOPTOSIS",
+#                    organism = "mouse",
+#                    show_rownames =TRUE, 
+#                    cluster_cols = FALSE)
 
 ```
 
@@ -1993,6 +2019,21 @@ removedbatch_dds_vst <- limmaBatchEffectRemoval(input=dds_vst,
                                                    modelfactor = "Genotype_Age",
                                                    batchfactor = "Sex",
                                                    batchfactor_2 = NULL)
+
+# For later plotting of Heatmaps, it may be useful to have a dataframe of the batch-corrected values as log2-transformed (removedbatch_anno_log2) as well as as normal counts (removedbatch_anno).
+
+removedbatch_anno_log2<-removedbatch_dds_vst
+removedbatch_anno_log2<-merge(removedbatch_anno_log2,norm_anno[,c("GENEID","SYMBOL","GENETYPE","DESCRIPTION","CHR")],by="row.names")
+rownames(removedbatch_anno_log2)<-removedbatch_anno_log2$Row.names
+removedbatch_anno_log2$Row.names<-NULL
+
+
+removedbatch_anno<-removedbatch_dds_vst
+removedbatch_anno<-2^removedbatch_anno
+removedbatch_anno<-merge(removedbatch_anno,norm_anno[,c("GENEID","SYMBOL","GENETYPE","DESCRIPTION","CHR")],by="row.names")
+rownames(removedbatch_anno)<-removedbatch_anno$Row.names
+removedbatch_anno$Row.names<-NULL
+
 plotPCA(pca_input = removedbatch_dds_vst,
          ntop="all", 
          xPC=1,
@@ -2002,6 +2043,91 @@ plotPCA(pca_input = removedbatch_dds_vst,
          shape="Sex",
          point_size=3,
          title="PCA of batch-corrected counts")
+```
+
+You can also use the batch-corrected table as input for all heatmaps and as input for the top varying genes as displayed in the following section:
+
+```{r}
+# Heatmap of all genes
+plotHeatmap(input=removedbatch_anno_log2,geneset = "all",
+            title = "Heatmap of all present genes",
+            show_rownames = FALSE,
+            cluster_cols = TRUE)
+
+# Hierarchical Clustering of most variable genes
+
+# define variable genes
+rv = genefilter::rowVars(removedbatch_anno_log2[,!colnames(removedbatch_anno_log2)%in%c("GENEID","SYMBOL","GENETYPE","DESCRIPTION","CHR")])
+q75 = quantile(rowVars(removedbatch_anno_log2[,!colnames(removedbatch_anno_log2)%in%c("GENEID","SYMBOL","GENETYPE","DESCRIPTION","CHR")]), .75)
+q75_names = names(which(rv > q75))
+
+
+# clustered Columns & Rows
+plotHeatmap(input=removedbatch_anno_log2,geneset = q75_names,
+                title = "Heatmap of all most variable genes",
+                show_rownames = FALSE,
+                cluster_cols = TRUE)
+
+
+# Sample-to-Sample correlation & distance 
+
+# Correlation
+
+# Correlation based on batch-corrected counts
+sampleCor <- as.matrix(cor(removedbatch_anno_log2[,!colnames(removedbatch_anno_log2)%in%c("GENEID","SYMBOL","GENETYPE","DESCRIPTION","CHR")], use="all.obs", method="pearson"))
+rownames(sampleCor)<- sample_table$ID
+colnames(sampleCor)<- sample_table$ID
+
+pheatmap(sampleCor,
+         main="Sample Correlation based on variance-stabilized counts",
+         annotation_row = plot_annotation,
+         annotation_col = plot_annotation,
+         annotation_colors = ann_colors,
+         cluster_rows = F,
+         cluster_cols = F,
+         fontsize = 8)
+
+
+# Distance  
+#This function computes and returns the euclidean distance matrix between the rows of a data matrix, the samples in our case. 
+
+# Sample Distances based on variance-stabilized counts
+sampleDist <- as.matrix(dist(t(removedbatch_anno_log2[,!colnames(removedbatch_anno_log2)%in%c("GENEID","SYMBOL","GENETYPE","DESCRIPTION","CHR")])))
+rownames(sampleDist)<- sample_table$ID
+colnames(sampleDist)<- sample_table$ID
+
+pheatmap(sampleDist,
+         clustering_distance_rows = dist(t(assay(dds_vst))),
+         clustering_distance_cols = dist(t(assay(dds_vst))), 
+         main="Sample distances based on variance-stabilized counts per sample",
+         annotation_row = plot_annotation, 
+         annotation_col = plot_annotation,
+         annotation_colors = ann_colors,
+         fontsize = 8)
+
+# Positive Pearson Correlation
+
+#In the following chunk, we define the upper quartile of the variable genes and identify those genes with a high positive correlation (r>0.95).
+
+q75_vst = removedbatch_anno_log2[,!colnames(removedbatch_anno_log2)%in%c("GENEID","SYMBOL","GENETYPE","DESCRIPTION","CHR")][rowVars(removedbatch_anno_log2[,!colnames(removedbatch_anno_log2)%in%c("GENEID","SYMBOL","GENETYPE","DESCRIPTION","CHR")]) > quantile(rowVars(removedbatch_anno_log2[,!colnames(removedbatch_anno_log2)%in%c("GENEID","SYMBOL","GENETYPE","DESCRIPTION","CHR")]), .75),]
+
+rcor <- rcorr(t(q75_vst),type="pearson")
+rcor$sig <- rcor$P<0.05 & rcor$r>0 # define significant positive correlations
+rcor_filt <- rcor$r*rcor$si
+rcor_filt <- rcor_filt*upper.tri(rcor_filt)
+rcor_filt<- replace(rcor_filt, which( rcor_filt==0), NA)
+rcor_filt_melt <- melt(rcor_filt,na.rm = TRUE)
+
+rcor_filt_melt_cutoff <- rcor_filt_melt[rcor_filt_melt$value>0.95,]
+varR <- unique(rcor_filt_melt_cutoff$Var1)
+
+plotHeatmap(input=removedbatch_anno_log2,geneset = varR,
+                title = "Heatmap of all variable and co-expressed genes",
+                show_rownames = FALSE,
+                cluster_cols = FALSE)
+
+
+
 ```
 
 ## SVA: Unknown batch effects
@@ -2196,7 +2322,7 @@ DEcounts
 # the uDEG() function produces the union of the DE genes from the specified comparisons
 allDEgenes <- uDEG(comparisons=c("tg_4mo_vs_wt_4mo","tg_8mo_vs_wt_8mo","tg_12mo_vs_wt_12mo"))
 
-plotHeatmap(geneset = allDEgenes,
+plotHeatmap(input=norm_anno,geneset = allDEgenes,
             title = "Heatmap of all differentially expressed genes",
             show_rownames = FALSE,
             cluster_cols = TRUE)
@@ -2210,7 +2336,7 @@ if(organism=="mouse"){
   DE_TF <- allDEgenes[which(allDEgenes %in% norm_anno[norm_anno$SYMBOL %in% TFlist_hs,]$GENEID)]
 }
 
-plotHeatmap(geneset = DE_TF,
+plotHeatmap(input=norm_anno,geneset = DE_TF,
                 title = "Heatmap of all differentially expressed transcription factors",
                 show_rownames = TRUE,
                 cluster_cols = FALSE)
@@ -2308,7 +2434,7 @@ res_lrt <- results(dds_lrt)
 # Plot heatmap of significantly different genes 
 lrt_significantGenes <- rownames(res_lrt[!is.na(res_lrt$padj)&
                                            res_lrt$padj < 0.05 ,])
-plotHeatmap(geneset = lrt_significantGenes,
+plotHeatmap(input=norm_anno,geneset = lrt_significantGenes,
                 title = paste("Heatmap of all LRT-significant genes: ",length(lrt_significantGenes), sep=""),
                 show_rownames = FALSE,
                 cluster_cols = TRUE)
@@ -2316,7 +2442,7 @@ plotHeatmap(geneset = lrt_significantGenes,
 # Plot heatmap of 1000 top significant genes
 lrt_1000mostvariableGenes <- head(rownames(res_lrt[order(res_lrt$padj),]),1000)
 
-plotHeatmap(geneset = lrt_1000mostvariableGenes,
+plotHeatmap(input=norm_anno,geneset = lrt_1000mostvariableGenes,
                 title = "Heatmap of 1000 top significant LRT genes",
                 show_rownames = FALSE,
                 cluster_cols = TRUE)
@@ -2358,23 +2484,28 @@ http://varianceexplained.org/statistics/interpreting-pvalue-histogram/
 Plot heatmaps of the expression of the DE genes of the specified comparisons. The argument conditions allows to include samples from specified conditions in the heatmap.
 
 ```{r}
-  plotDEHeatmap("tg_4mo_vs_wt_4mo",
+  plotDEHeatmap(input=norm_anno,
+                               "tg_4mo_vs_wt_4mo",
                 factor="Genotype_Age",
                 conditions="all")
   
-  plotDEHeatmap("tg_4mo_vs_wt_4mo",
+  plotDEHeatmap(input=norm_anno,
+                               "tg_4mo_vs_wt_4mo",
                 factor="Genotype_Age",
                 conditions=c("tg_4mo","wt_4mo","wt_12mo"))
   
-  plotDEHeatmap("tg_4mo_vs_wt_4mo",
+  plotDEHeatmap(input=norm_anno,
+                               "tg_4mo_vs_wt_4mo",
                 factor="Genotype_Age",
                 conditions=c("tg_4mo","wt_4mo"))
   
-  plotDEHeatmap("tg_8mo_vs_wt_8mo",
+  plotDEHeatmap(input=norm_anno,
+                               "tg_8mo_vs_wt_8mo",
                 factor="Genotype_Age",
                 conditions=c("tg_8mo","wt_8mo"))
   
-  plotDEHeatmap("tg_12mo_vs_wt_12mo",
+  plotDEHeatmap(input=norm_anno,
+                               "tg_12mo_vs_wt_12mo",
                 factor="Genotype_Age",
                 conditions=c("tg_12mo","wt_12mo"))
 ```
@@ -2433,7 +2564,8 @@ dotplotGSEA(GSEA_tg_4mo_vs_wt_4mo$KEGGup)
 Please make sure that the specified terms are enriched terms of the selected results.
 
 ```{r}
-plotGSEAHeatmap(GSEA_result = GSEA_tg_4mo_vs_wt_4mo$GOup, 
+plotGSEAHeatmap(input=norm_anno,
+                               GSEA_result = GSEA_tg_4mo_vs_wt_4mo$GOup, 
               GeneSet="GO", 
               term = "synapse organization")
 ```
@@ -2473,6 +2605,11 @@ tmp <- as.data.frame(assay(dds_vst))
 tmp$GENEID <- norm_anno$GENEID
 tmp$SYMBOL <- norm_anno$SYMBOL
 sheet <- addWorksheet(ExcelOutput, sheetName = "Variance-stabilized counts")
+writeDataTable(ExcelOutput, sheet, tmp, withFilter=FALSE)
+
+# add batch-corrected counts
+tmp <- as.data.frame(removedbatch_anno)
+sheet <- addWorksheet(ExcelOutput, sheetName = "Batch-corrected counts")
 writeDataTable(ExcelOutput, sheet, tmp, withFilter=FALSE)
 
 # add DE test parameters
